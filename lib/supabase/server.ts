@@ -1,0 +1,54 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { env } from "../env";
+
+/**
+ * Server-side Supabase client
+ * Uses cookies for session management
+ * Safe to use in Server Components and Server Actions
+ */
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
+          }
+        },
+      },
+    }
+  );
+}
+
+/**
+ * Get authenticated user from server-side session
+ * Returns null if not authenticated
+ */
+export async function getServerUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return null;
+  }
+
+  return user;
+}
+
