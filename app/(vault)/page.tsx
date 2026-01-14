@@ -2,6 +2,17 @@ import { Suspense } from "react";
 import { CredentialsList } from "@/components/vault/credentials-list";
 import { SearchBar } from "@/components/vault/search-bar";
 import { Filters } from "@/components/vault/filters";
+import type { CredentialType, Environment } from "@/lib/types";
+
+// Type guard to validate credential type
+function isValidCredentialType(value: string | undefined): value is CredentialType {
+  return value === "server" || value === "website" || value === "oauth" || value === "api" || value === "custom";
+}
+
+// Type guard to validate environment
+function isValidEnvironment(value: string | undefined): value is Environment {
+  return value === "prod" || value === "staging" || value === "dev";
+}
 
 export default async function VaultPage({
   searchParams,
@@ -9,8 +20,10 @@ export default async function VaultPage({
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const query = typeof searchParams.q === "string" ? searchParams.q : undefined;
-  const type = typeof searchParams.type === "string" ? searchParams.type : undefined;
-  const environment = typeof searchParams.env === "string" ? searchParams.env : undefined;
+  const typeParam = typeof searchParams.type === "string" ? searchParams.type : undefined;
+  const type = isValidCredentialType(typeParam) ? typeParam : undefined;
+  const envParam = typeof searchParams.env === "string" ? searchParams.env : undefined;
+  const environment = isValidEnvironment(envParam) ? envParam : undefined;
   const favorite = searchParams.favorite === "true";
 
   return (
@@ -33,8 +46,8 @@ export default async function VaultPage({
         <Suspense fallback={<CredentialsListSkeleton />}>
           <CredentialsList
             query={query}
-            type={type as any}
-            environment={environment as any}
+            type={type}
+            environment={environment}
             favorite={favorite}
           />
         </Suspense>

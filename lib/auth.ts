@@ -11,6 +11,7 @@
 import bcrypt from "bcryptjs";
 import { createClient, getServerUser } from "./supabase/server";
 import { cookies } from "next/headers";
+import { env } from "./env";
 
 const SALT_ROUNDS = 12;
 const UNLOCK_COOKIE_NAME = "vault_unlocked";
@@ -53,59 +54,21 @@ export async function getVaultUser(userId: string) {
 
 /**
  * Check if user has set a master password
+ * Always returns true for single-user mode since it's in env
  */
 export async function hasMasterPassword(userId: string): Promise<boolean> {
-  const vaultUser = await getVaultUser(userId);
-  return !!vaultUser?.master_password_hash;
+  return true;
 }
 
 /**
  * Set or update master password
+ * No-op in single-user mode (master password is in env)
  */
 export async function setMasterPassword(
   userId: string,
   password: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    const hash = await hashMasterPassword(password);
-    const supabase = await createClient();
-
-    // Check if user profile exists
-    const existing = await getVaultUser(userId);
-
-    if (existing) {
-      // Update existing
-      const { error } = await supabase
-        .from("vault_users")
-        .update({
-          master_password_hash: hash,
-          master_password_verified_at: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } else {
-      // Create new
-      const { error } = await supabase.from("vault_users").insert({
-        user_id: userId,
-        master_password_hash: hash,
-        master_password_verified_at: new Date().toISOString(),
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    }
-
-    return { success: true };
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
+  return { success: true };
 }
 
 /**
@@ -116,29 +79,11 @@ export async function verifyAndUnlock(
   password: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const vaultUser = await getVaultUser(userId);
-
-    if (!vaultUser) {
-      return { success: false, error: "Master password not set" };
-    }
-
-    const isValid = await verifyMasterPassword(
-      password,
-      vaultUser.master_password_hash
-    );
+    const isValid = password === env.MASTER_PASSWORD;
 
     if (!isValid) {
       return { success: false, error: "Invalid master password" };
     }
-
-    // Update verified timestamp
-    const supabase = await createClient();
-    await supabase
-      .from("vault_users")
-      .update({
-        master_password_verified_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
 
     // Set unlock cookie (server-side session)
     const cookieStore = await cookies();

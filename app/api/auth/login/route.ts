@@ -1,91 +1,50 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
+import { AUTH_SESSION_COOKIE } from "@/lib/supabase/server";
 
 /**
  * Server-side login handler
- * Handles email/password authentication and sets session cookies properly
+ * Handles simple password authentication from env
  */
 export async function POST(request: NextRequest) {
     try {
-        const { email, password } = await request.json();
+        const { password } = await request.json();
 
-        if (!email || !password) {
+        if (!password) {
             return NextResponse.json(
-                { success: false, error: "Email and password are required" },
+                { success: false, error: "Password is required" },
                 { status: 400 }
             );
         }
 
-        let response = NextResponse.json({ success: true });
-
-        // Create Supabase client with proper cookie handling
-        const supabase = createServerClient(
-            env.NEXT_PUBLIC_SUPABASE_URL,
-            env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            {
-                cookies: {
-                    getAll() {
-                        return request.cookies.getAll();
-                    },
-                    setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
-                        cookiesToSet.forEach(({ name, value }) =>
-                            request.cookies.set(name, value)
-                        );
-                        response = NextResponse.json({ success: true });
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            response.cookies.set(name, value, options)
-                        );
-                    },
-                },
-            }
-        );
-
-        const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
-
-        if (error) {
+        // Check if password matches the one in environment
+        if (password !== env.AUTH_PASSWORD) {
             return NextResponse.json(
-                { success: false, error: error.message },
+                { success: false, error: "Invalid password" },
                 { status: 401 }
             );
         }
 
-        if (!data.session) {
-            return NextResponse.json(
-                { success: false, error: "Failed to create session" },
-                { status: 500 }
-            );
-        }
+        // Determine redirect URL
+        // In single-user mode, we assume vault is always set up but needs unlock
+        const redirectTo = "/master-password";
 
-        // Check if user has a master password set
-        const { data: vaultUser } = await supabase
-            .from("vault_users")
-            .select("master_password_hash")
-            .eq("user_id", data.user.id)
-            .single();
-
-        // Determine redirect URL based on master password status
-        const redirectTo = vaultUser
-            ? "/master-password" // Master password exists, unlock vault
-            : "/master-password?setup=true"; // No master password, set it up
-
-        // Return success with redirect URL
-        // Cookies are already set in the response
-        const responseWithCookies = NextResponse.json({
+        const response = NextResponse.json({
             success: true,
             redirectTo,
         });
 
-        // Copy all cookies from the response object that was built during setAll
-        response.cookies.getAll().forEach((cookie) => {
-            responseWithCookies.cookies.set(cookie.name, cookie.value, cookie);
+        // Set auth session cookie
+        response.cookies.set(AUTH_SESSION_COOKIE, "true", {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 60 * 60 * 24 * 7, // 7 days
+            path: "/",
         });
 
         // Set a temporary flag to help middleware recognize freshly logged-in users
-        responseWithCookies.cookies.set("just_logged_in", "true", {
+        response.cookies.set("just_logged_in", "true", {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "lax",
@@ -93,7 +52,7 @@ export async function POST(request: NextRequest) {
             path: "/",
         });
 
-        return responseWithCookies;
+        return response;
     } catch (err: any) {
         return NextResponse.json(
             { success: false, error: err.message || "Internal server error" },
@@ -101,3 +60,4 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+

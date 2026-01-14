@@ -25,7 +25,7 @@ export function Filters({
     } else {
       params.delete(key);
     }
-    router.push(`/vault?${params.toString()}`);
+    router.push(`/?${params.toString()}`);
   };
 
   return (

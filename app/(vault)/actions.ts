@@ -8,7 +8,7 @@
 import { requireAuthAndUnlock } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { encrypt, decrypt } from "@/lib/encryption";
-import { getClientIp, getUserAgent } from "@/lib/security";
+import { getClientIp, getUserAgent } from "@/lib/security-server";
 import { rateLimitDecryption, rateLimitCredentialCreation } from "@/lib/rate-limit";
 import { searchCredentials } from "@/lib/search";
 import type {

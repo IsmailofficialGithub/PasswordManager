@@ -1,59 +1,13 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { setMasterPassword } from "@/lib/auth";
-import { env } from "@/lib/env";
+import { getServerUser } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("[Master Password Setup] Starting...");
-
-    // Get cookies from request headers (more reliable in Next.js 15 API routes)
-    const cookieHeader = request.headers.get('cookie') || '';
-    console.log("[Master Password Setup] Cookie header:", cookieHeader ? "present" : "missing");
-
-    // Parse cookies from header
-    const cookiesMap = new Map<string, string>();
-    if (cookieHeader) {
-      cookieHeader.split('; ').forEach(cookie => {
-        const [name, ...valueParts] = cookie.split('=');
-        if (name) {
-          cookiesMap.set(name, valueParts.join('='));
-        }
-      });
-    }
-
-    console.log("[Master Password Setup] Parsed cookies:", Array.from(cookiesMap.keys()));
-
-    const supabase = createServerClient(
-      env.NEXT_PUBLIC_SUPABASE_URL,
-      env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          get(name: string) {
-            return cookiesMap.get(name);
-          },
-          set(name: string, value: string, options: any) {
-            cookiesMap.set(name, value);
-          },
-          remove(name: string, options: any) {
-            cookiesMap.delete(name);
-          },
-        },
-      }
-    );
-
     // Get authenticated user
-    console.log("[Master Password Setup] Getting user...");
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const user = await getServerUser();
 
-    console.log("[Master Password Setup] User:", user ? user.id : "null");
-    console.log("[Master Password Setup] Auth error:", authError);
-
-    if (authError || !user) {
-      console.error("[Master Password Setup] Authentication failed");
+    if (!user) {
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
         { status: 401 }
@@ -97,4 +51,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
 

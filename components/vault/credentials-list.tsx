@@ -1,5 +1,5 @@
 import { searchCredentialsAction } from "@/app/(vault)/actions";
-import { CredentialCard } from "./credential-card";
+import { CredentialsGrid } from "./credentials-grid";
 import type { CredentialType, Environment } from "@/lib/types";
 
 interface CredentialsListProps {
@@ -43,12 +43,6 @@ export async function CredentialsList({
     );
   }
 
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {credentials.map((credential) => (
-        <CredentialCard key={credential.id} credential={credential} />
-      ))}
-    </div>
-  );
+  return <CredentialsGrid credentials={credentials} />;
 }
 

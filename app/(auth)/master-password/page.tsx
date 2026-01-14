@@ -63,7 +63,7 @@ function MasterPasswordForm() {
 
         // Wait for cookie to be set, then redirect
         await new Promise(resolve => setTimeout(resolve, 500));
-        window.location.href = "/vault";
+        window.location.href = "/";
       } catch (err: any) {
         setError(err.message || "Failed to set master password");
       } finally {
@@ -86,7 +86,7 @@ function MasterPasswordForm() {
 
         // Wait for cookie to be set, then redirect
         await new Promise(resolve => setTimeout(resolve, 500));
-        window.location.href = "/vault";
+        window.location.href = "/";
       } catch (err: any) {
         setError(err.message || "Invalid master password");
       } finally {

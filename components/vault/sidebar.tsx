@@ -21,16 +21,20 @@ export function Sidebar() {
   const supabase = createClient();
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
   const navItems = [
-    { href: "/vault", label: "All Credentials", icon: Home },
-    { href: "/vault?favorite=true", label: "Favorites", icon: Star },
-    { href: "/vault/new", label: "New Credential", icon: Plus },
-    { href: "/vault/trash", label: "Trash", icon: Trash2 },
+    { href: "/", label: "All Credentials", icon: Home },
+    { href: "/?favorite=true", label: "Favorites", icon: Star },
+    { href: "/new", label: "New Credential", icon: Plus },
+    { href: "/trash", label: "Trash", icon: Trash2 },
   ];
 
   return (
@@ -43,8 +47,9 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 p-4">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || 
-            (item.href === "/vault" && pathname.startsWith("/vault") && pathname !== "/vault/new" && pathname !== "/vault/trash");
+          const isActive = pathname === item.href ||
+            (item.href === "/" && pathname === "/") ||
+            (item.href === "/" && !["/new", "/trash"].some(p => pathname.startsWith(p)));
 
           return (
             <Link

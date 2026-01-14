@@ -1,48 +1,21 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { verifyAndUnlock } from "@/lib/auth";
 import { rateLimitMasterPassword } from "@/lib/rate-limit";
-import { getClientIp } from "@/lib/security";
-import { env } from "@/lib/env";
+import { getServerUser } from "@/lib/supabase/server";
+import { getClientIp } from "@/lib/security-server";
 
 export async function POST(request: NextRequest) {
   try {
-    // Create Supabase client with proper cookie handling for API routes
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      env.NEXT_PUBLIC_SUPABASE_URL,
-      env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options)
-              );
-            } catch {
-              // Ignore errors in API routes
-            }
-          },
-        },
-      }
-    );
-
     // Get authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const user = await getServerUser();
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
         { status: 401 }
       );
     }
+
 
     // Rate limiting
     const ip = await getClientIp();

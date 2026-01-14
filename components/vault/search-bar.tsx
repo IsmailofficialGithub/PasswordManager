@@ -26,7 +26,7 @@ export function SearchBar({ initialQuery }: SearchBarProps) {
       } else {
         params.delete("q");
       }
-      router.push(`/vault?${params.toString()}`);
+      router.push(`/?${params.toString()}`);
     }, 300); // Debounce 300ms
 
     return () => clearTimeout(timer);

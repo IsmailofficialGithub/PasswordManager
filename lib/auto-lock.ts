@@ -27,10 +27,16 @@ export function getActivityTrackingScript(): string {
     (function() {
       const timeout = ${timeoutMs};
       let activityTimer;
+      let lastServerUpdate = 0;
+      const SERVER_UPDATE_INTERVAL = 60000; // 1 minute
       
       function updateActivity() {
-        fetch('/api/activity', { method: 'POST', credentials: 'include' })
-          .catch(() => {});
+        const now = Date.now();
+        if (now - lastServerUpdate > SERVER_UPDATE_INTERVAL) {
+          lastServerUpdate = now;
+          fetch('/api/activity', { method: 'POST', credentials: 'include' })
+            .catch(() => {});
+        }
       }
       
       function resetTimer() {
@@ -49,8 +55,9 @@ export function getActivityTrackingScript(): string {
         }, { passive: true });
       });
       
-      // Initial timer
+      // Initial timer and activity
       resetTimer();
+      updateActivity();
     })();
   `;
 }

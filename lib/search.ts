@@ -12,7 +12,7 @@ export async function searchCredentials(
   userId: string,
   params: SearchParams
 ): Promise<SearchResults> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const page = params.page || 1;
   const limit = params.limit || 50;
   const offset = (page - 1) * limit;
