@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { decryptSecret } from "../actions";
+import { decryptSecret } from "../../actions";
 
 /**
  * API endpoint for on-demand decryption
