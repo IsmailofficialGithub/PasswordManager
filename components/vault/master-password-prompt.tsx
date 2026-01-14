@@ -73,7 +73,7 @@ export function MasterPasswordPrompt({
                         Verify Master Password
                     </DialogTitle>
                     <DialogDescription>
-                        Enter your master password to view this credential's secret.
+                        Enter your master password to view this credential&apos;s secret.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4">
