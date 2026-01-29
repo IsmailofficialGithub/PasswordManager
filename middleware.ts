@@ -20,8 +20,10 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
   // Check custom auth session
-  const isAuthenticated = request.cookies.get(AUTH_SESSION_COOKIE)?.value === "true";
-  const unlocked = request.cookies.get("vault_unlocked")?.value === "true";
+  // Safety check: ensure cookies and AUTH_SESSION_COOKIE are available
+  const authCookie = AUTH_SESSION_COOKIE && request.cookies?.get(AUTH_SESSION_COOKIE);
+  const isAuthenticated = authCookie?.value === "true";
+  const unlocked = request.cookies?.get("vault_unlocked")?.value === "true";
 
   // Auth routes (require auth but not master password)
   const authRoutes = ["/master-password"];

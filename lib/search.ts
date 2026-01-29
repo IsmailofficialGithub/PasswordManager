@@ -2,7 +2,7 @@
  * Server-side search and filtering logic
  */
 
-import { createClient } from "./supabase/server";
+import { createAdminClient } from "./supabase/admin";
 import type { SearchParams, SearchResults, CredentialWithTags } from "./types";
 
 /**
@@ -12,7 +12,7 @@ export async function searchCredentials(
   userId: string,
   params: SearchParams
 ): Promise<SearchResults> {
-  const supabase = await createClient();
+  const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
   const page = params.page || 1;
   const limit = params.limit || 50;
   const offset = (page - 1) * limit;

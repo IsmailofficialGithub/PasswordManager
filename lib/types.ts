@@ -5,6 +5,7 @@
 export type CredentialType = "server" | "website" | "oauth" | "api" | "custom";
 export type AuthProvider = "google" | "auth0" | "github" | "custom";
 export type Environment = "prod" | "staging" | "dev";
+export type ConnectionType = "rdp" | "vnc" | "ftp" | "sftp" | "telnet" | "other";
 export type AuditAction = "view" | "copy" | "create" | "update" | "delete" | "restore";
 
 /**
@@ -21,6 +22,7 @@ export interface Credential {
   auth_provider?: AuthProvider | null;
   host?: string | null;
   port?: number | null;
+  connection_type?: ConnectionType | null;
   environment?: Environment | null;
   notes?: string | null;
   favorite: boolean;
@@ -49,6 +51,7 @@ export interface CredentialFormData {
   auth_provider?: AuthProvider;
   host?: string;
   port?: number;
+  connection_type?: ConnectionType;
   environment?: Environment;
   notes?: string;
   favorite?: boolean;
@@ -106,6 +109,7 @@ export interface SearchParams {
   query?: string;
   type?: CredentialType;
   environment?: Environment;
+  connection_type?: ConnectionType;
   auth_provider?: AuthProvider;
   favorite?: boolean;
   tag_ids?: string[];

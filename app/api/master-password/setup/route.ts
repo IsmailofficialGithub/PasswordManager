@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { setMasterPassword } from "@/lib/auth";
-import { getServerUser } from "@/lib/supabase/server";
+import { AUTH_SESSION_COOKIE, SINGLE_USER_ID } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
-    const user = await getServerUser();
+    // Check custom auth session (for single-user mode)
+    const authCookie = request.cookies.get(AUTH_SESSION_COOKIE);
+    const isAuthenticated = authCookie?.value === "true";
 
-    if (!user) {
+    if (!isAuthenticated) {
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
         { status: 401 }
@@ -23,7 +24,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await setMasterPassword(user.id, password);
+    // Use single user ID for single-user mode
+    const userId = SINGLE_USER_ID;
+    const result = await setMasterPassword(userId, password);
 
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });

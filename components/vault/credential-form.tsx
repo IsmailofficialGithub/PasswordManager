@@ -8,7 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createCredential, updateCredential, deleteCredential, decryptSecret } from "@/app/(vault)/actions";
 import { PasswordReveal } from "@/components/vault/password-reveal";
 import { DeleteConfirmationDialog } from "@/components/vault/delete-confirmation-dialog";
+
 import type { CredentialWithTags, CredentialFormData } from "@/lib/types";
+
 
 interface CredentialFormProps {
   credential?: CredentialWithTags;
@@ -18,7 +20,9 @@ export function CredentialForm({ credential }: CredentialFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
 
   const [formData, setFormData] = useState<CredentialFormData>({
     title: credential?.title || "",
@@ -29,6 +33,7 @@ export function CredentialForm({ credential }: CredentialFormProps) {
     auth_provider: credential?.auth_provider || undefined,
     host: credential?.host || "",
     port: credential?.port || undefined,
+    connection_type: credential?.connection_type || undefined,
     environment: credential?.environment || undefined,
     notes: credential?.notes || "",
     favorite: credential?.favorite || false,
@@ -40,13 +45,20 @@ export function CredentialForm({ credential }: CredentialFormProps) {
     setError("");
 
     startTransition(async () => {
+      setError("");
+      setSuccess(false);
+
       const result = credential
         ? await updateCredential(credential.id, formData)
         : await createCredential(formData);
 
       if (result.success) {
-        router.push("/");
-        router.refresh();
+        setSuccess(true);
+        // Wait a moment to show success message, then redirect
+        setTimeout(() => {
+          router.push("/");
+          router.refresh();
+        }, 1000);
       } else {
         setError(result.error || "Failed to save credential");
       }
@@ -72,6 +84,8 @@ export function CredentialForm({ credential }: CredentialFormProps) {
     });
   };
 
+
+
   return (
     <>
       {/* Current Credential Display - Only shown when editing */}
@@ -81,6 +95,33 @@ export function CredentialForm({ credential }: CredentialFormProps) {
             <CardTitle>Current Credential</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {credential.host && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Host / IP
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm">{credential.host}</span>
+                  {credential.port && (
+                    <span className="text-xs text-muted-foreground">:{credential.port}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {credential.connection_type && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Connection Type
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm uppercase font-semibold text-primary">
+                    {credential.connection_type}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {credential.username && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">
@@ -104,6 +145,8 @@ export function CredentialForm({ credential }: CredentialFormProps) {
                 />
               </div>
             )}
+
+
           </CardContent>
         </Card>
       )}
@@ -117,6 +160,11 @@ export function CredentialForm({ credential }: CredentialFormProps) {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {success && (
+              <div className="rounded-md bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
+                {credential ? "Credential updated successfully!" : "Credential created successfully!"}
+              </div>
+            )}
             {error && (
               <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                 {error}
@@ -239,6 +287,35 @@ export function CredentialForm({ credential }: CredentialFormProps) {
                     />
                   </div>
                 </div>
+                {formData.type === "server" && (
+                  <div className="space-y-2">
+                    <label htmlFor="connection_type" className="text-sm font-medium">
+                      Connection Type
+                    </label>
+                    <select
+                      id="connection_type"
+                      value={formData.connection_type || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          connection_type: (e.target.value || undefined) as any,
+                        })
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      disabled={isPending}
+                    >
+                      <option value="">None</option>
+
+                      <option value="rdp">RDP</option>
+                      <option value="vnc">VNC</option>
+                      <option value="ftp">FTP</option>
+                      <option value="sftp">SFTP</option>
+                      <option value="telnet">Telnet</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                )}
+
               </>
             )}
 

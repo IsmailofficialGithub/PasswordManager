@@ -21,12 +21,29 @@ const KEY_LENGTH = 32; // 256 bits
  * Converts hex string to Buffer
  */
 function getKey(): Buffer {
-  const keyHex = getEncryptionKey();
+  let keyHex = getEncryptionKey();
+  
+  // Trim whitespace (common issue in production env vars)
+  keyHex = keyHex.trim();
   
   // Validate key length (should be 64 hex chars = 32 bytes)
+  // Allow 63 characters and pad with 0 if needed (handles common copy/paste issues)
+  if (keyHex.length === 63) {
+    // Pad with leading 0 if 63 characters (handles missing leading zero)
+    keyHex = "0" + keyHex;
+  }
+  
   if (keyHex.length !== 64) {
     throw new Error(
       `Invalid encryption key length. Expected 64 hex characters (32 bytes), got ${keyHex.length}. ` +
+      `Generate with: openssl rand -hex 32. Make sure there are no spaces or newlines.`
+    );
+  }
+
+  // Validate it's valid hex
+  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) {
+    throw new Error(
+      `Invalid encryption key format. Must be 64 hexadecimal characters (0-9, a-f). ` +
       `Generate with: openssl rand -hex 32`
     );
   }

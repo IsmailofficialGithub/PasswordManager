@@ -2,8 +2,16 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { env } from "../env";
 
-export const SINGLE_USER_ID = "00000000-0000-0000-0000-000000000001";
+/**
+ * Cookie name for authentication session
+ */
 export const AUTH_SESSION_COOKIE = "auth_session";
+
+/**
+ * Single user ID for single-user mode
+ * This is used when not using Supabase authentication
+ */
+export const SINGLE_USER_ID = "00000000-0000-0000-0000-000000000001";
 
 /**
  * Server-side Supabase client
@@ -13,10 +21,9 @@ export const AUTH_SESSION_COOKIE = "auth_session";
 export async function createClient() {
   const cookieStore = await cookies();
 
-  // Use service role key to bypass RLS as we handle auth via env
   return createServerClient(
     env.NEXT_PUBLIC_SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     {
       cookies: {
         getAll() {
@@ -28,7 +35,9 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Ignore errors if called from Server Component
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
           }
         },
       },
@@ -36,23 +45,11 @@ export async function createClient() {
   );
 }
 
-
 /**
  * Get authenticated user from server-side session
- * Returns a fixed user ID if environment-based auth matches
+ * Returns null if not authenticated
  */
 export async function getServerUser() {
-  const cookieStore = await cookies();
-  const session = cookieStore.get(AUTH_SESSION_COOKIE);
-
-  if (session?.value === "true") {
-    return {
-      id: SINGLE_USER_ID,
-      email: "admin@local",
-    };
-  }
-
-  // Fallback to Supabase auth (for transition or if still used)
   const supabase = await createClient();
   const {
     data: { user },

@@ -9,9 +9,9 @@
  */
 
 import bcrypt from "bcryptjs";
-import { createClient, getServerUser } from "./supabase/server";
+import { createClient, getServerUser, AUTH_SESSION_COOKIE, SINGLE_USER_ID } from "./supabase/server";
+import { createAdminClient } from "./supabase/admin";
 import { cookies } from "next/headers";
-import { env } from "./env";
 
 const SALT_ROUNDS = 12;
 const UNLOCK_COOKIE_NAME = "vault_unlocked";
@@ -36,9 +36,10 @@ export async function verifyMasterPassword(
 
 /**
  * Get vault user profile (with master password hash)
+ * Uses admin client to bypass RLS for single-user mode
  */
 export async function getVaultUser(userId: string) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("vault_users")
     .select("*")
@@ -54,21 +55,59 @@ export async function getVaultUser(userId: string) {
 
 /**
  * Check if user has set a master password
- * Always returns true for single-user mode since it's in env
  */
 export async function hasMasterPassword(userId: string): Promise<boolean> {
-  return true;
+  const vaultUser = await getVaultUser(userId);
+  return !!vaultUser?.master_password_hash;
 }
 
 /**
  * Set or update master password
- * No-op in single-user mode (master password is in env)
  */
 export async function setMasterPassword(
   userId: string,
   password: string
 ): Promise<{ success: boolean; error?: string }> {
-  return { success: true };
+  try {
+    const hash = await hashMasterPassword(password);
+    const supabase = createAdminClient(); // Use admin client to bypass RLS
+
+    // Check if user profile exists
+    const existing = await getVaultUser(userId);
+
+    if (existing) {
+      // Update existing
+      const { error } = await supabase
+        .from("vault_users")
+        .update({
+          master_password_hash: hash,
+          master_password_verified_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+    } else {
+      // Create new
+      const { error } = await supabase.from("vault_users").insert({
+        user_id: userId,
+        master_password_hash: hash,
+        master_password_verified_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
 
 /**
@@ -79,11 +118,29 @@ export async function verifyAndUnlock(
   password: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const isValid = password === env.MASTER_PASSWORD;
+    const vaultUser = await getVaultUser(userId);
+
+    if (!vaultUser) {
+      return { success: false, error: "Master password not set" };
+    }
+
+    const isValid = await verifyMasterPassword(
+      password,
+      vaultUser.master_password_hash
+    );
 
     if (!isValid) {
       return { success: false, error: "Invalid master password" };
     }
+
+    // Update verified timestamp
+    const supabase = createAdminClient(); // Use admin client to bypass RLS
+    await supabase
+      .from("vault_users")
+      .update({
+        master_password_verified_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
 
     // Set unlock cookie (server-side session)
     const cookieStore = await cookies();
@@ -124,33 +181,76 @@ export async function lockVault(): Promise<void> {
 /**
  * Require authentication and master password unlock
  * Use in Server Actions and API routes
+ * Supports both Supabase auth and custom cookie-based auth (single-user mode)
  */
 export async function requireAuthAndUnlock(): Promise<{
   user: { id: string };
   error?: string;
 }> {
-  // Check Supabase auth
-  const user = await getServerUser();
-  if (!user) {
+  try {
+    console.log("[Auth] requireAuthAndUnlock called");
+    // Check custom auth session (for single-user mode)
+    const cookieStore = await cookies();
+    const authCookie = cookieStore.get(AUTH_SESSION_COOKIE);
+    const isAuthenticated = authCookie?.value === "true";
+    console.log("[Auth] isAuthenticated:", isAuthenticated);
+
+    let userId: string | null = null;
+
+    if (isAuthenticated) {
+      // Use single user ID for custom auth
+      userId = SINGLE_USER_ID;
+      console.log("[Auth] Using single user ID:", userId);
+    } else {
+      // Fallback to Supabase auth (for multi-user mode)
+      const user = await getServerUser();
+      if (user) {
+        userId = user.id;
+        console.log("[Auth] Using Supabase user ID:", userId);
+      }
+    }
+
+    if (!userId) {
+      console.log("[Auth] No user ID found - not authenticated");
+      return { user: { id: "" }, error: "Not authenticated" };
+    }
+
+    // Check master password unlock
+    const unlocked = await isVaultUnlocked();
+    console.log("[Auth] Vault unlocked:", unlocked);
+    if (!unlocked) {
+      console.log("[Auth] Vault is locked - returning error");
+      return { user: { id: userId }, error: "Vault is locked" };
+    }
+
+    console.log("[Auth] Authentication and unlock successful");
+    return { user: { id: userId } };
+  } catch (error) {
+    // If there's an error reading cookies, return not authenticated
+    console.error("[Auth] Error in requireAuthAndUnlock:", error);
     return { user: { id: "" }, error: "Not authenticated" };
   }
-
-  // Check master password unlock
-  const unlocked = await isVaultUnlocked();
-  if (!unlocked) {
-    return { user: { id: user.id }, error: "Vault is locked" };
-  }
-
-  return { user: { id: user.id } };
 }
 
 /**
  * Require only authentication (for master password setup)
+ * Supports both Supabase auth and custom cookie-based auth (single-user mode)
  */
 export async function requireAuth(): Promise<{
   user: { id: string } | null;
   error?: string;
 }> {
+  // Check custom auth session (for single-user mode)
+  const cookieStore = await cookies();
+  const authCookie = cookieStore.get(AUTH_SESSION_COOKIE);
+  const isAuthenticated = authCookie?.value === "true";
+
+  if (isAuthenticated) {
+    // Use single user ID for custom auth
+    return { user: { id: SINGLE_USER_ID } };
+  }
+
+  // Fallback to Supabase auth (for multi-user mode)
   const user = await getServerUser();
   if (!user) {
     return { user: null, error: "Not authenticated" };

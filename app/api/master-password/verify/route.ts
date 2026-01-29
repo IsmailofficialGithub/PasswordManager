@@ -1,25 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyAndUnlock } from "@/lib/auth";
+import { verifyAndUnlock, setMasterPassword, hasMasterPassword } from "@/lib/auth";
 import { rateLimitMasterPassword } from "@/lib/rate-limit";
-import { getServerUser } from "@/lib/supabase/server";
+import { AUTH_SESSION_COOKIE, SINGLE_USER_ID } from "@/lib/supabase/server";
 import { getClientIp } from "@/lib/security-server";
+import { env } from "@/lib/env";
 
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
-    const user = await getServerUser();
+    // Check custom auth session (for single-user mode)
+    const authCookie = request.cookies.get(AUTH_SESSION_COOKIE);
+    const isAuthenticated = authCookie?.value === "true";
 
-    if (!user) {
+    if (!isAuthenticated) {
       return NextResponse.json(
         { success: false, error: "Not authenticated" },
         { status: 401 }
       );
     }
 
+    // Use single user ID for single-user mode
+    const userId = SINGLE_USER_ID;
 
     // Rate limiting
     const ip = await getClientIp();
-    if (!rateLimitMasterPassword(user.id)) {
+    if (!rateLimitMasterPassword(userId)) {
       return NextResponse.json(
         { success: false, error: "Too many attempts. Please try again later." },
         { status: 429 }
@@ -35,7 +39,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await verifyAndUnlock(user.id, password);
+    // Auto-initialize master password from env if not set (single-user mode)
+    const masterPasswordSet = await hasMasterPassword(userId);
+    if (!masterPasswordSet) {
+      // Check if password matches the one from env
+      if (password === env.MASTER_PASSWORD) {
+        // Auto-setup the master password
+        const setupResult = await setMasterPassword(userId, password);
+        if (!setupResult.success) {
+          return NextResponse.json(
+            { success: false, error: setupResult.error || "Failed to initialize master password" },
+            { status: 400 }
+          );
+        }
+        // Continue to unlock after setup
+      } else {
+        return NextResponse.json(
+          { success: false, error: "Master password not set. Please use the password from your environment configuration." },
+          { status: 400 }
+        );
+      }
+    }
+
+    const result = await verifyAndUnlock(userId, password);
 
     if (!result.success) {
       return NextResponse.json(result, { status: 400 });

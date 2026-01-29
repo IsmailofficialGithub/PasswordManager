@@ -7,6 +7,7 @@
 
 import { requireAuthAndUnlock } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { encrypt, decrypt } from "@/lib/encryption";
 import { getClientIp, getUserAgent } from "@/lib/security-server";
 import { rateLimitDecryption, rateLimitCredentialCreation } from "@/lib/rate-limit";
@@ -36,7 +37,7 @@ export async function createCredential(
       return { success: false, error: "Rate limit exceeded" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     // Encrypt secret if provided
     let encryptedSecret: string | null = null;
@@ -57,6 +58,7 @@ export async function createCredential(
         auth_provider: data.auth_provider || null,
         host: data.host || null,
         port: data.port || null,
+        connection_type: data.connection_type || null,
         environment: data.environment || null,
         notes: data.notes || null,
         favorite: data.favorite || false,
@@ -111,7 +113,7 @@ export async function updateCredential(
       return { success: false, error: authError || "Not authenticated" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     // Verify ownership
     const { data: existing, error: fetchError } = await supabase
@@ -147,6 +149,7 @@ export async function updateCredential(
         auth_provider: data.auth_provider || null,
         host: data.host || null,
         port: data.port || null,
+        connection_type: data.connection_type || null,
         environment: data.environment || null,
         notes: data.notes || null,
         favorite: data.favorite || false,
@@ -211,7 +214,7 @@ export async function deleteCredential(
       return { success: false, error: authError || "Not authenticated" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     const { error } = await supabase
       .from("vault_credentials")
@@ -255,7 +258,7 @@ export async function restoreCredential(
       return { success: false, error: authError || "Not authenticated" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     const { error } = await supabase
       .from("vault_credentials")
@@ -299,7 +302,7 @@ export async function permanentlyDeleteCredential(
       return { success: false, error: authError || "Not authenticated" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     // Hard delete (cascade will handle related records)
     const { error } = await supabase
@@ -333,7 +336,7 @@ export async function getCredentialById(
       return { success: false, error: authError || "Not authenticated" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     const { data, error } = await supabase
       .from("vault_credentials")
@@ -404,7 +407,7 @@ export async function decryptSecret(
       return { success: false, error: "Rate limit exceeded" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     // Get encrypted secret
     const { data, error } = await supabase
@@ -454,7 +457,7 @@ export async function toggleFavorite(
       return { success: false, error: authError || "Not authenticated" };
     }
 
-    const supabase = await createClient();
+    const supabase = createAdminClient(); // Use admin client to bypass RLS in single-user mode
 
     // Get current favorite status
     const { data: current, error: fetchError } = await supabase

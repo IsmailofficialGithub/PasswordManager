@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateActivity } from "@/lib/auto-lock-server";
-import { getServerUser } from "@/lib/supabase/server";
+import { AUTH_SESSION_COOKIE } from "@/lib/supabase/server";
 
 /**
  * API endpoint to update activity timestamp
@@ -8,8 +8,11 @@ import { getServerUser } from "@/lib/supabase/server";
  */
 export async function POST(request: NextRequest) {
   try {
-    const user = await getServerUser();
-    if (!user) {
+    // Check authentication using cookie-based auth (same as middleware)
+    const authCookie = request.cookies.get(AUTH_SESSION_COOKIE);
+    const isAuthenticated = authCookie?.value === "true";
+    
+    if (!isAuthenticated) {
       return NextResponse.json({ success: false }, { status: 401 });
     }
 
