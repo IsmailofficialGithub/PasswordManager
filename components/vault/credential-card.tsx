@@ -70,7 +70,10 @@ export function CredentialCard({ credential }: CredentialCardProps) {
           )}
           {credential.username && (
             <div className="text-muted-foreground">
-              <span className="font-medium">User:</span> {credential.username}
+              <span className="font-medium">
+                {credential.type === "env" ? "Folder:" : "User:"}
+              </span>{" "}
+              {credential.username}
             </div>
           )}
           {credential.encrypted_secret && (
