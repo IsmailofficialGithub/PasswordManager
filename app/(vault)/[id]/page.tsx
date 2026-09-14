@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { getCredentialById } from "@/app/(vault)/actions";
 import { CredentialForm } from "@/components/vault/credential-form";
+import { EnvForm } from "@/components/vault/env-form";
 
 export default async function CredentialPage({
   params,
@@ -13,10 +14,18 @@ export default async function CredentialPage({
     notFound();
   }
 
+  const isEnv = result.credential.type === "env";
+
   return (
     <div className="p-6">
-      <h1 className="mb-6 text-3xl font-bold">Edit Credential</h1>
-      <CredentialForm credential={result.credential} />
+      <h1 className="mb-6 text-3xl font-bold">
+        {isEnv ? "Edit Env File" : "Edit Credential"}
+      </h1>
+      {isEnv ? (
+        <EnvForm credential={result.credential} />
+      ) : (
+        <CredentialForm credential={result.credential} />
+      )}
     </div>
   );
 }

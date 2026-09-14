@@ -2,7 +2,7 @@
  * Type definitions for the Vault application
  */
 
-export type CredentialType = "server" | "website" | "oauth" | "api" | "custom";
+export type CredentialType = "server" | "website" | "oauth" | "api" | "custom" | "env";
 export type AuthProvider = "google" | "auth0" | "github" | "custom";
 export type Environment = "prod" | "staging" | "dev";
 export type ConnectionType = "rdp" | "vnc" | "ftp" | "sftp" | "telnet" | "other";

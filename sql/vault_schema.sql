@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS vault_credentials (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('server', 'website', 'oauth', 'api', 'custom')),
+  type TEXT NOT NULL CHECK (type IN ('server', 'website', 'oauth', 'api', 'custom', 'env')),
   website_url TEXT,
   username TEXT,
   -- Encrypted secret (AES-256-GCM)

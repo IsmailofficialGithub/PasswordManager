@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { toggleFavorite, decryptSecret } from "@/app/(vault)/actions";
 import { PasswordReveal } from "@/components/vault/password-reveal";
 import type { CredentialWithTags } from "@/lib/types";
-import { Star, ExternalLink, Server, Globe, Key, Code } from "lucide-react";
+import { Star, ExternalLink, Server, Globe, Key, Code, FileCode } from "lucide-react";
 
 interface CredentialCardProps {
   credential: CredentialWithTags;
@@ -19,6 +19,7 @@ const typeIcons = {
   oauth: Key,
   api: Code,
   custom: Key,
+  env: FileCode,
 };
 
 export function CredentialCard({ credential }: CredentialCardProps) {

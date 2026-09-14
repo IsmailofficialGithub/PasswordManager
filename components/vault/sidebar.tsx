@@ -13,6 +13,7 @@ import {
   LogOut,
   Home,
   Star,
+  FileCode,
 } from "lucide-react";
 
 export function Sidebar() {
@@ -33,6 +34,7 @@ export function Sidebar() {
   const navItems = [
     { href: "/", label: "All Credentials", icon: Home },
     { href: "/?favorite=true", label: "Favorites", icon: Star },
+    { href: "/env-manager", label: "Env Manager", icon: FileCode },
     { href: "/new", label: "New Credential", icon: Plus },
     { href: "/trash", label: "Trash", icon: Trash2 },
   ];
@@ -47,9 +49,9 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 p-4">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href ||
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/') ||
             (item.href === "/" && pathname === "/") ||
-            (item.href === "/" && !["/new", "/trash"].some(p => pathname.startsWith(p)));
+            (item.href === "/" && !["/new", "/trash", "/env-manager"].some(p => pathname.startsWith(p)));
 
           return (
             <Link
