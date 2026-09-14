@@ -391,6 +391,61 @@ export async function getCredentialById(
 }
 
 /**
+ * Get all environment credentials related to a specific one (same title, website, username)
+ */
+export async function getRelatedEnvCredentials(
+  baseCredential: Credential
+): Promise<{ success: boolean; credentials?: CredentialWithTags[]; error?: string }> {
+  try {
+    const { user, error: authError } = await requireAuthAndUnlock();
+    if (authError || !user) {
+      return { success: false, error: authError || "Not authenticated" };
+    }
+
+    const supabase = createAdminClient();
+
+    const { data, error } = await supabase
+      .from("vault_credentials")
+      .select(
+        `
+        *,
+        vault_credential_tags(
+          tag_id,
+          vault_tags(*)
+        )
+      `
+      )
+      .eq("user_id", user.id)
+      .eq("type", "env")
+      .eq("title", baseCredential.title)
+      .is("deleted_at", null);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    // Filter further by website_url and username since .eq with null is tricky in Supabase sometimes
+    const filteredData = data.filter(
+      (c) =>
+        (c.website_url || "") === (baseCredential.website_url || "") &&
+        (c.username || "") === (baseCredential.username || "")
+    );
+
+    const credentials: CredentialWithTags[] = filteredData.map((d: any) => ({
+      ...d,
+      tags: d.vault_credential_tags?.map((ct: any) => ct.vault_tags) || [],
+    }));
+
+    return { success: true, credentials };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
  * Decrypt and return secret (one-time operation)
  */
 export async function decryptSecret(

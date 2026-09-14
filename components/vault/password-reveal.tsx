@@ -10,6 +10,7 @@ interface PasswordRevealProps {
   encryptedSecret: string;
   credentialId: string;
   onDecrypt: (credentialId: string) => Promise<{ success: boolean; secret?: string; error?: string }>;
+  isMultiline?: boolean;
 }
 
 const AUTO_LOCK_DURATION = 60000; // 1 minute in milliseconds
@@ -18,6 +19,7 @@ export function PasswordReveal({
   encryptedSecret,
   credentialId,
   onDecrypt,
+  isMultiline = false,
 }: PasswordRevealProps) {
   const [revealed, setRevealed] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
@@ -117,10 +119,16 @@ export function PasswordReveal({
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-sm">
-          {revealed && secret ? secret : maskSecret("••••••••", 0)}
-        </span>
+      <div className={`flex ${isMultiline && revealed && secret ? "flex-col items-start w-full" : "items-center"} gap-2`}>
+        {isMultiline && revealed && secret ? (
+          <pre className="font-mono text-sm bg-muted p-3 rounded-md w-full overflow-x-auto whitespace-pre-wrap">
+            {secret}
+          </pre>
+        ) : (
+          <span className="font-mono text-sm">
+            {revealed && secret ? secret : maskSecret("••••••••", 0)}
+          </span>
+        )}
         <div className="flex gap-1">
           <Button
             variant="ghost"
