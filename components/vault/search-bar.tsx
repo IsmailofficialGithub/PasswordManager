@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
@@ -12,6 +12,7 @@ interface SearchBarProps {
 export function SearchBar({ initialQuery }: SearchBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const [query, setQuery] = useState(initialQuery || "");
 
   useEffect(() => {
@@ -19,6 +20,9 @@ export function SearchBar({ initialQuery }: SearchBarProps) {
   }, [initialQuery]);
 
   useEffect(() => {
+    const currentQ = searchParams.get("q") || "";
+    if (query === currentQ) return;
+
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
       if (query) {
@@ -26,11 +30,13 @@ export function SearchBar({ initialQuery }: SearchBarProps) {
       } else {
         params.delete("q");
       }
-      router.push(`/?${params.toString()}`);
+      const queryString = params.toString();
+      const newUrl = queryString ? `${pathname}?${queryString}` : pathname;
+      router.push(newUrl);
     }, 300); // Debounce 300ms
 
     return () => clearTimeout(timer);
-  }, [query, router, searchParams]);
+  }, [query, router, searchParams, pathname]);
 
   return (
     <div className="relative">
@@ -45,4 +51,3 @@ export function SearchBar({ initialQuery }: SearchBarProps) {
     </div>
   );
 }
-

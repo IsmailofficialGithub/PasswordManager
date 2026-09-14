@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { CredentialType, Environment } from "@/lib/types";
 
@@ -17,6 +17,7 @@ export function Filters({
 }: FiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   const updateFilter = (key: string, value: string | null) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -25,7 +26,9 @@ export function Filters({
     } else {
       params.delete(key);
     }
-    router.push(`/?${params.toString()}`);
+    const queryString = params.toString();
+    const newUrl = queryString ? `${pathname}?${queryString}` : pathname;
+    router.push(newUrl);
   };
 
   return (
@@ -65,4 +68,3 @@ export function Filters({
     </div>
   );
 }
-
