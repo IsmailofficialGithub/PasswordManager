@@ -131,6 +131,7 @@ export function PasswordReveal({
         )}
         <div className="flex gap-1">
           <Button
+            type="button"
             variant="ghost"
             size="icon"
             className="h-8 w-8"
@@ -148,6 +149,7 @@ export function PasswordReveal({
           </Button>
           {revealed && secret && (
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               className="h-8 w-8"
