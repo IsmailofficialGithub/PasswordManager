@@ -1,6 +1,7 @@
 import { searchCredentialsAction } from "@/app/(vault)/actions";
 import { CredentialsGrid } from "./credentials-grid";
-import type { CredentialType, Environment } from "@/lib/types";
+import { EnvProjectsGrid } from "./env-projects-grid";
+import type { CredentialType, Environment, CredentialWithTags } from "@/lib/types";
 
 interface CredentialsListProps {
   query?: string;
@@ -41,6 +42,18 @@ export async function CredentialsList({
         <p className="text-sm">Create your first credential to get started</p>
       </div>
     );
+  }
+
+  if (type === "env") {
+    const grouped = new Map<string, CredentialWithTags[]>();
+    for (const c of credentials) {
+      const title = c.title || "Unnamed Project";
+      if (!grouped.has(title)) {
+        grouped.set(title, []);
+      }
+      grouped.get(title)!.push(c);
+    }
+    return <EnvProjectsGrid groupedCredentials={grouped} />;
   }
 
   return <CredentialsGrid credentials={credentials} />;
