@@ -27,15 +27,16 @@ export function MasterPasswordPrompt({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log("Master password verify button clicked");
+    const handleVerify = async (e?: React.SyntheticEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        if (loading) return;
         setLoading(true);
         setError("");
 
         try {
-            console.log("Sending verification request...");
             const response = await fetch("/api/master-password/verify", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -43,10 +44,8 @@ export function MasterPasswordPrompt({
             });
 
             const data = await response.json();
-            console.log("Verification response:", data);
 
             if (data.success) {
-                console.log("Verification successful, calling onVerified");
                 setPassword("");
                 onOpenChange(false);
                 // Small delay to ensure dialog closes before decrypting
@@ -54,20 +53,26 @@ export function MasterPasswordPrompt({
                     onVerified();
                 }, 100);
             } else {
-                console.log("Verification failed:", data.error);
                 setError(data.error || "Invalid master password");
             }
         } catch (err) {
-            console.error("Verification error:", err);
             setError("Failed to verify password");
         } finally {
             setLoading(false);
         }
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            handleVerify();
+        }
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent onClick={(e) => e.stopPropagation()}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Lock className="h-5 w-5" />
@@ -77,7 +82,7 @@ export function MasterPasswordPrompt({
                         Enter your master password to view this credential&apos;s secret.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-4">
                     {error && (
                         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
                             {error}
@@ -90,6 +95,7 @@ export function MasterPasswordPrompt({
                             placeholder="Enter master password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={handleKeyDown}
                             required
                             autoFocus
                             disabled={loading}
@@ -104,11 +110,15 @@ export function MasterPasswordPrompt({
                         >
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={loading}>
+                        <Button
+                            type="button"
+                            onClick={handleVerify}
+                            disabled={loading || !password}
+                        >
                             {loading ? "Verifying..." : "Verify"}
                         </Button>
                     </div>
-                </form>
+                </div>
             </DialogContent>
         </Dialog>
     );
