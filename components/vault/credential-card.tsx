@@ -41,16 +41,16 @@ export function CredentialCard({ credential }: CredentialCardProps) {
   };
 
   return (
-    <Card className="transition-shadow hover:shadow-md">
+    <Card className="transition-shadow hover:shadow-md overflow-hidden w-full max-w-full">
       <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <Link href={`/${credential.id}`} className="flex items-center gap-2 flex-1">
-          <Icon className="h-5 w-5 text-muted-foreground" />
-          <h3 className="font-semibold">{credential.title}</h3>
+        <Link href={`/${credential.id}`} className="flex items-center gap-2 flex-1 min-w-0">
+          <Icon className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <h3 className="font-semibold truncate">{credential.title}</h3>
         </Link>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
+          className="h-6 w-6 shrink-0"
           onClick={handleToggleFavorite}
           disabled={loading}
         >
@@ -60,16 +60,16 @@ export function CredentialCard({ credential }: CredentialCardProps) {
           />
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2 text-sm">
+      <CardContent className="min-w-0">
+        <div className="space-y-2 text-sm min-w-0">
           {credential.website_url && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <ExternalLink className="h-3 w-3" />
+            <div className="flex items-center gap-2 text-muted-foreground min-w-0">
+              <ExternalLink className="h-3 w-3 shrink-0" />
               <span className="truncate">{credential.website_url}</span>
             </div>
           )}
           {credential.username && (
-            <div className="text-muted-foreground">
+            <div className="text-muted-foreground truncate">
               <span className="font-medium">
                 {credential.type === "env" ? "Folder:" : "User:"}
               </span>{" "}
@@ -77,10 +77,10 @@ export function CredentialCard({ credential }: CredentialCardProps) {
             </div>
           )}
           {credential.encrypted_secret && (
-            <div className="text-muted-foreground" onClick={(e) => e.preventDefault()}>
-              <div className="flex items-start gap-2">
-                <span className="font-medium">Secret:</span>
-                <div className="flex-1">
+            <div className="text-muted-foreground min-w-0" onClick={(e) => e.preventDefault()}>
+              <div className="flex items-start gap-2 min-w-0">
+                <span className="font-medium shrink-0">Secret:</span>
+                <div className="flex-1 min-w-0 overflow-hidden">
                   <PasswordReveal
                     encryptedSecret={credential.encrypted_secret}
                     credentialId={credential.id}

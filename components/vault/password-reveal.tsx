@@ -133,13 +133,13 @@ export function PasswordReveal({
 
   return (
     <>
-      <div className={`flex ${isMultiline && revealed && secret ? "flex-col items-start w-full" : "items-center"} gap-2`}>
+      <div className={`flex ${isMultiline && revealed && secret ? "flex-col items-start w-full" : "items-center min-w-0 flex-wrap"} gap-2`}>
         {isMultiline && revealed && secret ? (
-          <pre className="font-mono text-sm bg-muted p-3 rounded-md w-full overflow-x-auto whitespace-pre-wrap">
+          <pre className="font-mono text-sm bg-muted p-3 rounded-md w-full overflow-x-auto whitespace-pre-wrap break-all">
             {secret}
           </pre>
         ) : (
-          <span className="font-mono text-sm">
+          <span className="font-mono text-sm break-all max-w-full">
             {revealed && secret ? secret : maskSecret("••••••••", 0)}
           </span>
         )}
