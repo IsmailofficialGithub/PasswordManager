@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createCredential, updateCredential, deleteCredential, decryptSecret } from "@/app/(vault)/actions";
 import { PasswordReveal } from "@/components/vault/password-reveal";
 import { DeleteConfirmationDialog } from "@/components/vault/delete-confirmation-dialog";
-import { Plus, Trash2, Folder as FolderIcon } from "lucide-react";
+import { Plus, Trash2, Folder as FolderIcon, FileCode2, ChevronRight, ChevronDown } from "lucide-react";
 
 import type { CredentialWithTags, CredentialFormData, Environment } from "@/lib/types";
 
@@ -49,8 +49,8 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
   // State for folders and their environment contents
   // Map folderName -> { prod, staging, dev }
   const [folders, setFolders] = useState<Record<string, FolderState>>({});
-  const [activeFolder, setActiveFolder] = useState<string>("/");
-  const [activeTab, setActiveTab] = useState<Environment>("prod");
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({ "/": true });
+  const [activeFile, setActiveFile] = useState<{ folder: string; env: Environment } | null>(null);
   
   // Initialize state from props
   useEffect(() => {
@@ -78,8 +78,12 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       });
       
       const folderNames = Object.keys(initialFolders);
-      if (folderNames.length > 0 && !folderNames.includes(activeFolder)) {
-        setActiveFolder(folderNames[0]);
+      if (folderNames.length > 0 && !activeFile) {
+        // Expand all folders by default when editing
+        const initialExpanded: Record<string, boolean> = {};
+        folderNames.forEach(f => initialExpanded[f] = true);
+        setExpandedFolders(initialExpanded);
+        setActiveFile({ folder: folderNames[0], env: "prod" });
       }
     } else {
       // Default empty state
@@ -88,6 +92,9 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
         staging: { content: "", isModified: false },
         dev: { content: "", isModified: false },
       };
+      if (!activeFile) {
+        setActiveFile({ folder: "/", env: "prod" });
+      }
     }
     
     setFolders(initialFolders);
@@ -112,7 +119,8 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
         dev: { content: "", isModified: false },
       }
     });
-    setActiveFolder(formattedName);
+    setExpandedFolders({ ...expandedFolders, [formattedName]: true });
+    setActiveFile({ folder: formattedName, env: "prod" });
   };
 
   const confirmDeleteFolder = () => {
@@ -148,8 +156,8 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
         }
         
         setFolders(newFolders);
-        if (activeFolder === folderToDelete) {
-          setActiveFolder(Object.keys(newFolders)[0]);
+        if (activeFile?.folder === folderToDelete) {
+          setActiveFile({ folder: Object.keys(newFolders)[0], env: "prod" });
         }
         setFolderToDelete(null);
         setShowDeleteDialog(false);
@@ -167,8 +175,8 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
        };
      }
       setFolders(newFolders);
-      if (activeFolder === folderToDelete) {
-        setActiveFolder(Object.keys(newFolders)[0]);
+      if (activeFile?.folder === folderToDelete) {
+        setActiveFile({ folder: Object.keys(newFolders)[0], env: "prod" });
       }
       setFolderToDelete(null);
       setShowDeleteDialog(false);
@@ -260,13 +268,13 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     });
   };
 
-  const activeFolderData = folders[activeFolder] || {
-    prod: { content: "", isModified: false },
-    staging: { content: "", isModified: false },
-    dev: { content: "", isModified: false }
+  const activeFolderData = activeFile ? folders[activeFile.folder] : null;
+  const currentEnvData = activeFolderData && activeFile ? activeFolderData[activeFile.env] : null;
+
+  const toggleFolder = (folder: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
   };
-  
-  const currentEnvData = activeFolderData[activeTab];
 
   return (
     <>
@@ -330,140 +338,161 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="flex flex-col space-y-1 p-2">
-                {Object.keys(folders).map((folder) => (
-                  <div
-                    key={folder}
-                    className={`flex items-center justify-between rounded-md px-3 py-2 text-sm cursor-pointer transition-colors ${
-                      activeFolder === folder ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                    }`}
-                    onClick={() => setActiveFolder(folder)}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <FolderIcon className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{folder}</span>
+              <div className="flex flex-col p-2 gap-1">
+                {Object.entries(folders).map(([folder, folderData]) => {
+                  const isExpanded = expandedFolders[folder];
+                  return (
+                    <div key={folder} className="flex flex-col">
+                      <div
+                        className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-muted transition-colors group"
+                        onClick={(e) => toggleFolder(folder, e)}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                          <FolderIcon className="h-4 w-4 shrink-0 text-blue-500/80" />
+                          <span className="truncate font-medium">{folder}</span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFolderToDelete(folder);
+                            setShowDeleteDialog(true);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="flex flex-col ml-6 pl-2 border-l border-border/50 mt-1 space-y-1">
+                          {(["prod", "staging", "dev"] as Environment[]).map((env) => {
+                            const isSelected = activeFile?.folder === folder && activeFile?.env === env;
+                            const hasSaved = !!folderData[env].credentialId;
+                            const hasPending = folderData[env].isModified && folderData[env].content.trim() !== "";
+                            const envLabel = env === "prod" ? "production" : env;
+
+                            return (
+                              <div
+                                key={env}
+                                className={`flex items-center justify-between rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors ${
+                                  isSelected ? "bg-primary text-primary-foreground font-medium shadow-sm" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                }`}
+                                onClick={() => setActiveFile({ folder, env })}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <FileCode2 className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                                  <span className="truncate">.env.{envLabel}</span>
+                                </div>
+                                <div className="flex gap-1.5 items-center">
+                                  {hasSaved && !hasPending && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-primary-foreground/70" : "bg-blue-500/70"}`} title="Saved"></span>}
+                                  {hasPending && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-green-300" : "bg-green-500"}`} title="Pending Changes"></span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={`h-6 w-6 opacity-0 hover:opacity-100 ${activeFolder === folder ? "text-primary-foreground opacity-100" : "text-muted-foreground"}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFolderToDelete(folder);
-                        setShowDeleteDialog(true);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
 
           {/* Environment Editor */}
           <Card className="md:col-span-3">
-            <CardHeader className="pb-4">
+            <CardHeader className="pb-4 border-b">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <FolderIcon className="h-5 w-5 text-muted-foreground" />
-                  {activeFolder}
+                  <FileCode2 className="h-5 w-5 text-muted-foreground" />
+                  {activeFile ? `${activeFile.folder === '/' ? '' : activeFile.folder}/.env.${activeFile.env === 'prod' ? 'production' : activeFile.env}` : "Select a file"}
                 </CardTitle>
               </div>
             </CardHeader>
-            <CardContent>
-              {/* Environment Tabs */}
-              <div className="flex gap-2 mb-4 bg-muted p-1 rounded-md">
-                {(["prod", "staging", "dev"] as Environment[]).map((env) => {
-                  const hasSaved = !!activeFolderData[env].credentialId;
-                  const hasPending = activeFolderData[env].isModified && activeFolderData[env].content.trim() !== "";
-                  
-                  return (
-                    <Button
-                      key={env}
-                      type="button"
-                      variant={activeTab === env ? "default" : "ghost"}
-                      size="sm"
-                      className="flex-1 capitalize"
-                      onClick={() => setActiveTab(env)}
-                    >
-                      {env === "prod" ? "Production" : env}
-                      {hasSaved && <span className="ml-2 w-2 h-2 rounded-full bg-blue-500" title="Saved"></span>}
-                      {hasPending && <span className="ml-2 w-2 h-2 rounded-full bg-green-500" title="Pending Changes"></span>}
-                    </Button>
-                  );
-                })}
-              </div>
-
+            <CardContent className="pt-6">
               {/* Current Env View/Edit */}
-              <div className="space-y-4">
-                {currentEnvData.credentialId && currentEnvData.encrypted_secret && !currentEnvData.isModified && (
-                  <div className="space-y-2 border rounded-md p-4 bg-muted/30">
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-sm font-medium text-muted-foreground">
-                        Current Saved Content
-                      </label>
-                      <Button 
-                        type="button" 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => updateEnvContent(activeFolder, activeTab, " ")} // Trigger modified state
-                      >
-                        Replace Content
-                      </Button>
-                    </div>
-                    <PasswordReveal
-                      key={`${currentEnvData.credentialId}-${activeTab}`}
-                      encryptedSecret={currentEnvData.encrypted_secret}
-                      credentialId={currentEnvData.credentialId}
-                      onDecrypt={decryptSecret}
-                      isMultiline={true}
-                    />
-                  </div>
-                )}
-
-                {(!currentEnvData.credentialId || currentEnvData.isModified) && (
-                  <div className="space-y-2">
-                     {currentEnvData.credentialId && currentEnvData.isModified && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-medium text-amber-500">Replacing existing content</span>
+              {activeFile && currentEnvData ? (
+                <div className="space-y-4">
+                  {currentEnvData.credentialId && currentEnvData.encrypted_secret && !currentEnvData.isModified && (
+                    <div className="space-y-2 border rounded-md p-4 bg-muted/30">
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm font-medium text-muted-foreground">
+                          Current Saved Content
+                        </label>
                         <Button 
                           type="button" 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-6 px-2 text-xs"
-                          onClick={() => {
-                            // Revert modification
-                            setFolders(prev => ({
-                              ...prev,
-                              [activeFolder]: {
-                                ...prev[activeFolder],
-                                [activeTab]: {
-                                  ...prev[activeFolder][activeTab],
-                                  content: "",
-                                  isModified: false
-                                }
-                              }
-                            }));
-                          }}
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => updateEnvContent(activeFile.folder, activeFile.env, " ")} // Trigger modified state
                         >
-                          Cancel Replace
+                          Replace Content
                         </Button>
                       </div>
-                    )}
-                    <textarea
-                      id={`secret-${activeFolder}-${activeTab}`}
-                      value={currentEnvData.content}
-                      onChange={(e) => updateEnvContent(activeFolder, activeTab, e.target.value)}
-                      rows={12}
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      disabled={isPending}
-                      placeholder={`Paste .env content for ${activeFolder} (${activeTab}) here...`}
-                    />
-                  </div>
-                )}
-              </div>
+                      <PasswordReveal
+                        key={`${currentEnvData.credentialId}-${activeFile.env}`}
+                        encryptedSecret={currentEnvData.encrypted_secret}
+                        credentialId={currentEnvData.credentialId}
+                        onDecrypt={decryptSecret}
+                        isMultiline={true}
+                      />
+                    </div>
+                  )}
+
+                  {(!currentEnvData.credentialId || currentEnvData.isModified) && (
+                    <div className="space-y-2">
+                       {currentEnvData.credentialId && currentEnvData.isModified && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-medium text-amber-500">Replacing existing content</span>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              // Revert modification
+                              setFolders(prev => ({
+                                ...prev,
+                                [activeFile.folder]: {
+                                  ...prev[activeFile.folder],
+                                  [activeFile.env]: {
+                                    ...prev[activeFile.folder][activeFile.env],
+                                    content: "",
+                                    isModified: false
+                                  }
+                                }
+                              }));
+                            }}
+                          >
+                            Cancel Replace
+                          </Button>
+                        </div>
+                      )}
+                      <textarea
+                        id={`secret-${activeFile.folder}-${activeFile.env}`}
+                        value={currentEnvData.content}
+                        onChange={(e) => updateEnvContent(activeFile.folder, activeFile.env, e.target.value)}
+                        rows={16}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        disabled={isPending}
+                        placeholder={`Paste .env content for ${activeFile.folder}/.env.${activeFile.env === 'prod' ? 'production' : activeFile.env} here...`}
+                      />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+                  <FileCode2 className="h-12 w-12 mb-4 opacity-20" />
+                  <p>Select a file from the sidebar to view or edit its contents.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
