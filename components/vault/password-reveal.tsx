@@ -15,6 +15,20 @@ interface PasswordRevealProps {
 
 const AUTO_LOCK_DURATION = 60000; // 1 minute in milliseconds
 
+// Client-side API fetch for decryption to prevent Next.js Server Action page revalidation and state wipe
+async function fetchDecryptApi(credentialId: string): Promise<{ success: boolean; secret?: string; error?: string }> {
+  try {
+    const res = await fetch("/api/decrypt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialId }),
+    });
+    return await res.json();
+  } catch (err) {
+    return { success: false, error: "Network error during decryption" };
+  }
+}
+
 export function PasswordReveal({
   encryptedSecret,
   credentialId,
@@ -47,12 +61,23 @@ export function PasswordReveal({
 
     // Set new timer to auto-lock after 1 minute
     autoLockTimerRef.current = setTimeout(() => {
-      console.log("Auto-locking password after 1 minute");
       setRevealed(false);
       setSecret(null);
       setError("");
       setCopied(false);
     }, AUTO_LOCK_DURATION);
+  };
+
+  const decryptSecretData = async (): Promise<{ success: boolean; secret?: string; error?: string }> => {
+    // Use API endpoint fetch over Server Action to avoid page revalidation state wipe
+    const apiResult = await fetchDecryptApi(credentialId);
+    if (apiResult.success) {
+      return apiResult;
+    }
+    if (onDecrypt && apiResult.error !== "Vault is locked" && apiResult.error !== "Not authenticated") {
+      return onDecrypt(credentialId);
+    }
+    return apiResult;
   };
 
   const handleReveal = async () => {
@@ -67,15 +92,28 @@ export function PasswordReveal({
       return;
     }
 
-    // Require master password verification before decrypting
-    setShowMasterPasswordPrompt(true);
+    // Try to decrypt directly first (works if vault is already unlocked)
+    setLoading(true);
+    setError("");
+
+    const result = await decryptSecretData();
+    setLoading(false);
+
+    if (result.success && result.secret) {
+      setSecret(result.secret);
+      setRevealed(true);
+      startAutoLockTimer();
+    } else {
+      // Show master password prompt if vault is locked
+      setShowMasterPasswordPrompt(true);
+    }
   };
 
   const handleMasterPasswordVerified = async () => {
     setLoading(true);
     setError("");
 
-    const result = await onDecrypt(credentialId);
+    const result = await decryptSecretData();
     if (result.success && result.secret) {
       setSecret(result.secret);
       setRevealed(true);
