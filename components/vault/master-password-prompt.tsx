@@ -29,6 +29,7 @@ export function MasterPasswordPrompt({
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         console.log("Master password verify button clicked");
         setLoading(true);
         setError("");
@@ -103,7 +104,7 @@ export function MasterPasswordPrompt({
                         >
                             Cancel
                         </Button>
-                        <Button onClick={handleSubmit} disabled={loading}>
+                        <Button type="submit" disabled={loading}>
                             {loading ? "Verifying..." : "Verify"}
                         </Button>
                     </div>

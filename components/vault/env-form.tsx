@@ -101,25 +101,39 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
   }, [projectCredentials]);
 
   const handleAddFolder = () => {
-    const folderName = window.prompt("Enter folder path (e.g., /backend):", "/new-folder");
+    const folderName = window.prompt("Enter folder path (e.g., /backend/api):", "/new-folder");
     if (!folderName) return;
     
-    const formattedName = folderName.startsWith("/") ? folderName : `/${folderName}`;
-    
-    if (folders[formattedName]) {
-      alert("Folder already exists!");
-      return;
+    let formattedName = folderName.startsWith("/") ? folderName : `/${folderName}`;
+    if (formattedName !== "/" && formattedName.endsWith("/")) {
+      formattedName = formattedName.slice(0, -1);
     }
     
-    setFolders({
-      ...folders,
-      [formattedName]: {
-        prod: { content: "", isModified: false },
-        staging: { content: "", isModified: false },
-        dev: { content: "", isModified: false },
+    const newFolders = { ...folders };
+    let currentPath = "";
+    
+    const parts = formattedName.split("/").filter(Boolean);
+    
+    if (parts.length === 0) {
+      if (!newFolders["/"]) {
+        newFolders["/"] = { prod: { content: "", isModified: false }, staging: { content: "", isModified: false }, dev: { content: "", isModified: false } };
       }
-    });
-    setExpandedFolders({ ...expandedFolders, [formattedName]: true });
+    } else {
+      // Create all intermediate folders
+      for (const part of parts) {
+        currentPath += `/${part}`;
+        if (!newFolders[currentPath]) {
+          newFolders[currentPath] = {
+            prod: { content: "", isModified: false },
+            staging: { content: "", isModified: false },
+            dev: { content: "", isModified: false },
+          };
+        }
+      }
+    }
+    
+    setFolders(newFolders);
+    setExpandedFolders(prev => ({ ...prev, [formattedName]: true }));
     setActiveFile({ folder: formattedName, env: "prod" });
   };
 
@@ -273,8 +287,25 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
 
   const toggleFolder = (folder: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setExpandedFolders(prev => ({ ...prev, [folder]: !prev[folder] }));
+    setExpandedFolders(prev => ({ ...prev, [folder]: prev[folder] === false ? true : false }));
   };
+
+  // Compute visible folders for the tree view
+  const sortedFolders = Object.keys(folders).sort();
+  const visibleFolders = sortedFolders.filter(folder => {
+    if (folder === "/") return true;
+    
+    const parts = folder.split("/").filter(Boolean);
+    let parentPath = "";
+    for (let i = 0; i < parts.length - 1; i++) {
+      parentPath += `/${parts[i]}`;
+      // Hide if any parent is explicitly collapsed
+      if (expandedFolders[parentPath] === false) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   return (
     <>
@@ -338,13 +369,24 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="flex flex-col p-2 gap-1">
-                {Object.entries(folders).map(([folder, folderData]) => {
-                  const isExpanded = expandedFolders[folder];
+              <div className="flex flex-col p-2 gap-1 overflow-x-auto">
+                {visibleFolders.map((folder) => {
+                  const folderData = folders[folder];
+                  const isExpanded = expandedFolders[folder] !== false; // true by default
+                  
+                  const parts = folder === "/" ? [] : folder.split("/").filter(Boolean);
+                  const depth = parts.length;
+                  const name = depth === 0 ? "/" : parts[parts.length - 1];
+                  
+                  // Calculate padding based on depth
+                  const folderPadding = depth === 0 ? 8 : depth * 16;
+                  const filesPadding = folderPadding + 24;
+
                   return (
                     <div key={folder} className="flex flex-col">
                       <div
-                        className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-muted transition-colors group"
+                        className="flex items-center justify-between rounded-md py-1.5 text-sm cursor-pointer hover:bg-muted transition-colors group"
+                        style={{ paddingLeft: `${folderPadding}px`, paddingRight: '8px' }}
                         onClick={(e) => toggleFolder(folder, e)}
                       >
                         <div className="flex items-center gap-1.5 truncate">
@@ -354,7 +396,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                             <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                           )}
                           <FolderIcon className="h-4 w-4 shrink-0 text-blue-500/80" />
-                          <span className="truncate font-medium">{folder}</span>
+                          <span className="truncate font-medium">{name}</span>
                         </div>
                         <Button
                           type="button"
@@ -372,7 +414,8 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                       </div>
 
                       {isExpanded && (
-                        <div className="flex flex-col ml-6 pl-2 border-l border-border/50 mt-1 space-y-1">
+                        <div className="flex flex-col mt-1 space-y-1 relative" style={{ paddingLeft: `${filesPadding}px`, paddingRight: '8px' }}>
+                          <div className="absolute left-0 top-0 bottom-0 w-px bg-border/50" style={{ left: `${folderPadding + 7}px` }} />
                           {(["prod", "staging", "dev"] as Environment[]).map((env) => {
                             const isSelected = activeFile?.folder === folder && activeFile?.env === env;
                             const hasSaved = !!folderData[env].credentialId;
