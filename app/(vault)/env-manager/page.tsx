@@ -4,7 +4,7 @@ import { CredentialsList } from "@/components/vault/credentials-list";
 import { SearchBar } from "@/components/vault/search-bar";
 import { Filters } from "@/components/vault/filters";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, FolderGit2, Sparkles } from "lucide-react";
 import type { Environment } from "@/lib/types";
 
 function isValidEnvironment(value: string | undefined): value is Environment {
@@ -23,13 +23,23 @@ export default async function EnvManagerPage({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b bg-card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold">Env Manager</h1>
+      <div className="border-b border-border/60 bg-gradient-to-r from-card via-card to-muted/30 p-6 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                <FolderGit2 className="h-6 w-6" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Env Manager</h1>
+            </div>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Securely store, organize, and manage encrypted environment files and configurations across projects.
+            </p>
+          </div>
           <Link href="/env-manager/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New Env File
+            <Button className="shadow-sm font-semibold hover:shadow-md transition-all gap-1.5 px-5">
+              <Plus className="h-4 w-4" />
+              <span>New Env Vault</span>
             </Button>
           </Link>
         </div>
@@ -64,9 +74,10 @@ function CredentialsListSkeleton() {
       {[...Array(6)].map((_, i) => (
         <div
           key={i}
-          className="h-32 animate-pulse rounded-lg border bg-muted"
+          className="h-36 animate-pulse rounded-xl border border-border/40 bg-muted/30"
         />
       ))}
     </div>
   );
 }
+

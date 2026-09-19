@@ -1,40 +1,63 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { createCredential, updateCredential, deleteCredential, decryptSecret } from "@/app/(vault)/actions";
 import { PasswordReveal } from "@/components/vault/password-reveal";
 import { DeleteConfirmationDialog } from "@/components/vault/delete-confirmation-dialog";
-import { Plus, Trash2, Folder as FolderIcon, FileCode2, ChevronRight, ChevronDown } from "lucide-react";
+import { 
+  Plus, 
+  Trash2, 
+  Folder as FolderIcon, 
+  FolderPlus, 
+  FilePlus, 
+  FileCode2, 
+  FileText, 
+  ChevronRight, 
+  ChevronDown,
+  ChevronsUpDown,
+  Search,
+  Copy,
+  Check,
+  RotateCcw,
+  Edit3,
+  ShieldCheck,
+  Globe,
+  FolderGit2,
+  Sparkles,
+  FileCheck
+} from "lucide-react";
 
 import type { CredentialWithTags, CredentialFormData, Environment } from "@/lib/types";
 
 interface EnvFormProps {
-  // We pass all credentials for this project
+  // Pass all credentials for this project
   projectCredentials?: CredentialWithTags[];
 }
 
-type EnvData = {
+export interface FileNode {
+  id: string;
+  path: string;
+  name: string;
+  folderPath: string;
   content: string;
   encrypted_secret?: string;
   credentialId?: string;
   isModified: boolean;
-};
-
-type FolderState = Record<Environment, EnvData>;
+  environment?: Environment | null;
+}
 
 export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [folderToDelete, setFolderToDelete] = useState<string | null>(null);
-
-  const isEditing = projectCredentials.length > 0;
+  const [searchFilter, setSearchFilter] = useState("");
+  const [copiedPath, setCopiedPath] = useState(false);
   
   // Base metadata for the project
   const firstCred = projectCredentials[0];
@@ -46,171 +69,287 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     tag_ids: firstCred?.tags?.map((t) => t.id) || [],
   });
 
-  // State for folders and their environment contents
-  // Map folderName -> { prod, staging, dev }
-  const [folders, setFolders] = useState<Record<string, FolderState>>({});
+  const isEditing = projectCredentials.length > 0;
+
+  // State for files and folders
+  const [files, setFiles] = useState<FileNode[]>([]);
+  const [customFolders, setCustomFolders] = useState<string[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({ "/": true });
-  const [activeFile, setActiveFile] = useState<{ folder: string; env: Environment } | null>(null);
-  
-  // Initialize state from props
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const [deletedCredentialIds, setDeletedCredentialIds] = useState<string[]>([]);
+
+  // Dialog state for item creation (File / Folder)
+  const [createDialog, setCreateDialog] = useState<{
+    open: boolean;
+    type: "file" | "folder";
+    targetFolder: string;
+  }>({ open: false, type: "file", targetFolder: "/" });
+
+  const [newItemName, setNewItemName] = useState("");
+  const [createError, setCreateError] = useState("");
+
+  // Dialog state for deletion confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    open: boolean;
+    type: "file" | "folder";
+    targetIdOrPath: string;
+    label: string;
+  }>({ open: false, type: "file", targetIdOrPath: "", label: "" });
+
+  // Initialize file nodes from project credentials or default state
   useEffect(() => {
-    const initialFolders: Record<string, FolderState> = {};
-    
     if (projectCredentials.length > 0) {
-      projectCredentials.forEach((cred) => {
-        const folderName = cred.username || "/";
-        const env = (cred.environment || "prod") as Environment;
-        
-        if (!initialFolders[folderName]) {
-          initialFolders[folderName] = {
-            prod: { content: "", isModified: false },
-            staging: { content: "", isModified: false },
-            dev: { content: "", isModified: false },
-          };
+      const parsedFiles: FileNode[] = projectCredentials.map((cred) => {
+        let rawUsername = cred.username || "/";
+        let path = rawUsername;
+        const env = (cred.environment || null) as Environment | null;
+
+        // Convert legacy folder-only usernames into path with env filename
+        const isFolderOnly = !rawUsername.includes(".") || rawUsername.endsWith("/");
+        if (isFolderOnly && env) {
+          const envSuffix = env === "prod" ? "production" : env;
+          const baseFolder = rawUsername.endsWith("/") && rawUsername !== "/" ? rawUsername.slice(0, -1) : rawUsername;
+          path = baseFolder === "/" ? `/.env.${envSuffix}` : `${baseFolder}/.env.${envSuffix}`;
+        } else if (!path.startsWith("/")) {
+          path = `/${path}`;
         }
-        
-        initialFolders[folderName][env] = {
-          content: "", // We don't load secret by default
+
+        const lastSlashIndex = path.lastIndexOf("/");
+        const folderPath = lastSlashIndex <= 0 ? "/" : path.substring(0, lastSlashIndex);
+        const name = path.substring(lastSlashIndex + 1);
+
+        return {
+          id: cred.id,
+          path,
+          name,
+          folderPath,
+          content: "",
           encrypted_secret: cred.encrypted_secret || undefined,
           credentialId: cred.id,
           isModified: false,
+          environment: env,
         };
       });
-      
-      const folderNames = Object.keys(initialFolders);
-      if (folderNames.length > 0 && !activeFile) {
-        // Expand all folders by default when editing
-        const initialExpanded: Record<string, boolean> = {};
-        folderNames.forEach(f => initialExpanded[f] = true);
-        setExpandedFolders(initialExpanded);
-        setActiveFile({ folder: folderNames[0], env: "prod" });
+
+      setFiles(parsedFiles);
+      if (parsedFiles.length > 0 && !activeFileId) {
+        setActiveFileId(parsedFiles[0].id);
       }
+
+      // Expand all parent folders
+      const initialExpanded: Record<string, boolean> = { "/": true };
+      parsedFiles.forEach((file) => {
+        initialExpanded[file.folderPath] = true;
+      });
+      setExpandedFolders(initialExpanded);
     } else {
-      // Default empty state
-      initialFolders["/"] = {
-        prod: { content: "", isModified: false },
-        staging: { content: "", isModified: false },
-        dev: { content: "", isModified: false },
+      // Default initial file for brand new project
+      const defaultFile: FileNode = {
+        id: "default_env_prod",
+        path: "/.env.production",
+        name: ".env.production",
+        folderPath: "/",
+        content: "",
+        isModified: false,
+        environment: "prod",
       };
-      if (!activeFile) {
-        setActiveFile({ folder: "/", env: "prod" });
-      }
+      setFiles([defaultFile]);
+      setActiveFileId(defaultFile.id);
     }
-    
-    setFolders(initialFolders);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectCredentials]);
 
-  const handleAddFolder = () => {
-    const folderName = window.prompt("Enter folder path (e.g., /backend/api):", "/new-folder");
-    if (!folderName) return;
-    
-    let formattedName = folderName.startsWith("/") ? folderName : `/${folderName}`;
-    if (formattedName !== "/" && formattedName.endsWith("/")) {
-      formattedName = formattedName.slice(0, -1);
-    }
-    
-    const newFolders = { ...folders };
-    let currentPath = "";
-    
-    const parts = formattedName.split("/").filter(Boolean);
-    
-    if (parts.length === 0) {
-      if (!newFolders["/"]) {
-        newFolders["/"] = { prod: { content: "", isModified: false }, staging: { content: "", isModified: false }, dev: { content: "", isModified: false } };
-      }
-    } else {
-      // Create all intermediate folders
-      for (const part of parts) {
-        currentPath += `/${part}`;
-        if (!newFolders[currentPath]) {
-          newFolders[currentPath] = {
-            prod: { content: "", isModified: false },
-            staging: { content: "", isModified: false },
-            dev: { content: "", isModified: false },
-          };
-        }
-      }
-    }
-    
-    setFolders(newFolders);
-    setExpandedFolders(prev => ({ ...prev, [formattedName]: true }));
-    setActiveFile({ folder: formattedName, env: "prod" });
-  };
+  // Derive unique folder list
+  const allFolderPaths = useMemo(() => {
+    return Array.from(new Set(["/", ...customFolders, ...files.map((f) => f.folderPath)]));
+  }, [customFolders, files]);
 
-  const confirmDeleteFolder = () => {
-    if (!folderToDelete) return;
-    
-    // Check if it has saved credentials
-    const folderData = folders[folderToDelete];
-    const hasSavedIds = Object.values(folderData).some(env => env.credentialId);
-    
-    if (hasSavedIds) {
-      // Perform actual deletion of records
-      startTransition(async () => {
-        const deletePromises = [];
-        for (const env of Object.values(folderData)) {
-          if (env.credentialId) {
-            deletePromises.push(deleteCredential(env.credentialId));
-          }
-        }
-        
-        await Promise.all(deletePromises);
-        
-        // Remove from UI state
-        const newFolders = { ...folders };
-        delete newFolders[folderToDelete];
-        
-        if (Object.keys(newFolders).length === 0) {
-           // Ensure at least one folder exists
-           newFolders["/"] = {
-            prod: { content: "", isModified: false },
-            staging: { content: "", isModified: false },
-            dev: { content: "", isModified: false },
-          };
-        }
-        
-        setFolders(newFolders);
-        if (activeFile?.folder === folderToDelete) {
-          setActiveFile({ folder: Object.keys(newFolders)[0], env: "prod" });
-        }
-        setFolderToDelete(null);
-        setShowDeleteDialog(false);
-        router.refresh();
+  const folderList = useMemo(() => {
+    const completeFolderSet = new Set<string>(["/"]);
+    allFolderPaths.forEach((fp) => {
+      if (fp === "/") return;
+      const parts = fp.split("/").filter(Boolean);
+      let current = "";
+      parts.forEach((part) => {
+        current += `/${part}`;
+        completeFolderSet.add(current);
       });
-    } else {
-      // Just remove from UI state
-      const newFolders = { ...folders };
-      delete newFolders[folderToDelete];
-      if (Object.keys(newFolders).length === 0) {
-        newFolders["/"] = {
-         prod: { content: "", isModified: false },
-         staging: { content: "", isModified: false },
-         dev: { content: "", isModified: false },
-       };
-     }
-      setFolders(newFolders);
-      if (activeFile?.folder === folderToDelete) {
-        setActiveFile({ folder: Object.keys(newFolders)[0], env: "prod" });
+    });
+    return Array.from(completeFolderSet).sort();
+  }, [allFolderPaths]);
+
+  // Filtered files when searching
+  const filteredFiles = useMemo(() => {
+    if (!searchFilter.trim()) return files;
+    const query = searchFilter.toLowerCase();
+    return files.filter((f) => f.name.toLowerCase().includes(query) || f.path.toLowerCase().includes(query));
+  }, [files, searchFilter]);
+
+  // Helper to open item creation dialog
+  const openCreateDialog = (type: "file" | "folder", targetFolder: string) => {
+    setCreateDialog({ open: true, type, targetFolder });
+    setNewItemName("");
+    setCreateError("");
+  };
+
+  // Execute creation of file or folder
+  const handleConfirmCreate = () => {
+    setCreateError("");
+    const trimmed = newItemName.trim();
+    if (!trimmed) {
+      setCreateError(`${createDialog.type === "file" ? "File" : "Folder"} name is required.`);
+      return;
+    }
+
+    const parent = createDialog.targetFolder === "/" ? "" : createDialog.targetFolder;
+    const fullPath = trimmed.startsWith("/") ? trimmed : `${parent}/${trimmed}`;
+    const normalizedPath = fullPath.replace(/\/+/g, "/");
+
+    if (createDialog.type === "folder") {
+      if (folderList.includes(normalizedPath)) {
+        setCreateError("Folder already exists.");
+        return;
       }
-      setFolderToDelete(null);
-      setShowDeleteDialog(false);
+      setCustomFolders((prev) => [...prev, normalizedPath]);
+      setExpandedFolders((prev) => ({ ...prev, [createDialog.targetFolder]: true, [normalizedPath]: true }));
+      setCreateDialog({ open: false, type: "file", targetFolder: "/" });
+    } else {
+      // Create File
+      if (files.some((f) => f.path === normalizedPath)) {
+        setCreateError("File with this path already exists.");
+        return;
+      }
+
+      const lastSlash = normalizedPath.lastIndexOf("/");
+      const folderPath = lastSlash <= 0 ? "/" : normalizedPath.substring(0, lastSlash);
+      const name = normalizedPath.substring(lastSlash + 1);
+
+      let env: Environment | null = null;
+      if (normalizedPath.endsWith(".env.production") || normalizedPath.endsWith(".env.prod")) {
+        env = "prod";
+      } else if (normalizedPath.endsWith(".env.staging")) {
+        env = "staging";
+      } else if (normalizedPath.endsWith(".env.dev")) {
+        env = "dev";
+      }
+
+      const newFileNode: FileNode = {
+        id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        path: normalizedPath,
+        name,
+        folderPath,
+        content: "",
+        isModified: true,
+        environment: env,
+      };
+
+      setFiles((prev) => [...prev, newFileNode]);
+      setExpandedFolders((prev) => ({ ...prev, [folderPath]: true, [createDialog.targetFolder]: true }));
+      setActiveFileId(newFileNode.id);
+      setCreateDialog({ open: false, type: "file", targetFolder: "/" });
     }
   };
 
-  const updateEnvContent = (folder: string, env: Environment, content: string) => {
-    setFolders(prev => ({
-      ...prev,
-      [folder]: {
-        ...prev[folder],
-        [env]: {
-          ...prev[folder][env],
-          content,
-          isModified: true
-        }
-      }
-    }));
+  // Trigger delete dialog
+  const triggerDelete = (type: "file" | "folder", targetIdOrPath: string, label: string) => {
+    setDeleteConfirm({
+      open: true,
+      type,
+      targetIdOrPath,
+      label,
+    });
   };
 
+  // Confirm delete handler
+  const handleConfirmDelete = () => {
+    if (deleteConfirm.type === "file") {
+      const fileToDelete = files.find((f) => f.id === deleteConfirm.targetIdOrPath);
+      if (fileToDelete) {
+        if (fileToDelete.credentialId) {
+          setDeletedCredentialIds((prev) => [...prev, fileToDelete.credentialId!]);
+        }
+        setFiles((prev) => prev.filter((f) => f.id !== fileToDelete.id));
+        if (activeFileId === fileToDelete.id) {
+          const remaining = files.filter((f) => f.id !== fileToDelete.id);
+          setActiveFileId(remaining.length > 0 ? remaining[0].id : null);
+        }
+      }
+    } else {
+      // Delete folder and contained files
+      const targetFolder = deleteConfirm.targetIdOrPath;
+      const filesToDelete = files.filter(
+        (f) => f.folderPath === targetFolder || f.folderPath.startsWith(targetFolder + "/")
+      );
+
+      const credIdsToRemove = filesToDelete
+        .map((f) => f.credentialId)
+        .filter((id): id is string => Boolean(id));
+
+      if (credIdsToRemove.length > 0) {
+        setDeletedCredentialIds((prev) => [...prev, ...credIdsToRemove]);
+      }
+
+      setFiles((prev) =>
+        prev.filter(
+          (f) => !(f.folderPath === targetFolder || f.folderPath.startsWith(targetFolder + "/"))
+        )
+      );
+      setCustomFolders((prev) =>
+        prev.filter((f) => !(f === targetFolder || f.startsWith(targetFolder + "/")))
+      );
+
+      if (activeFileId) {
+        const currentActive = files.find((f) => f.id === activeFileId);
+        if (
+          currentActive &&
+          (currentActive.folderPath === targetFolder ||
+            currentActive.folderPath.startsWith(targetFolder + "/"))
+        ) {
+          const remaining = files.filter(
+            (f) => !(f.folderPath === targetFolder || f.folderPath.startsWith(targetFolder + "/"))
+          );
+          setActiveFileId(remaining.length > 0 ? remaining[0].id : null);
+        }
+      }
+    }
+
+    setDeleteConfirm({ open: false, type: "file", targetIdOrPath: "", label: "" });
+  };
+
+  // Update content of active file
+  const updateActiveFileContent = (content: string) => {
+    if (!activeFileId) return;
+    setFiles((prev) =>
+      prev.map((f) => (f.id === activeFileId ? { ...f, content, isModified: true } : f))
+    );
+  };
+
+  // Revert modifications for active file
+  const revertActiveFile = () => {
+    if (!activeFileId) return;
+    setFiles((prev) =>
+      prev.map((f) => (f.id === activeFileId ? { ...f, content: "", isModified: false } : f))
+    );
+  };
+
+  // Toggle expand all
+  const toggleExpandAll = () => {
+    const allExpanded = folderList.every((f) => expandedFolders[f] !== false);
+    const nextState: Record<string, boolean> = {};
+    folderList.forEach((f) => {
+      nextState[f] = !allExpanded;
+    });
+    setExpandedFolders(nextState);
+  };
+
+  // Copy active path
+  const handleCopyPath = (path: string) => {
+    navigator.clipboard.writeText(path);
+    setCopiedPath(true);
+    setTimeout(() => setCopiedPath(false), 2000);
+  };
+
+  // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -219,9 +358,14 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       setError("Project Title is required");
       return;
     }
-    
+
     if (!formData.website_url) {
       setError("Project URL is required");
+      return;
+    }
+
+    if (files.length === 0) {
+      setError("Project must contain at least one file");
       return;
     }
 
@@ -230,48 +374,37 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       setSuccess(false);
 
       const promises = [];
-      
-      // Iterate through all folders and environments
-      for (const [folderName, folderData] of Object.entries(folders)) {
-        for (const [envName, envData] of Object.entries(folderData)) {
-          const env = envName as Environment;
-          
-          const baseCredData: CredentialFormData = {
-            ...formData,
-            type: "env",
-            username: folderName,
-            environment: env,
-            secret: envData.isModified ? envData.content : "", // Only send secret if modified
-          };
 
-          if (envData.credentialId) {
-            // Update existing (only if we modified the content OR if base metadata changed)
-            // For simplicity, we'll update all of them to ensure metadata stays in sync across the project
-            promises.push(
-              updateCredential(envData.credentialId, {
-                ...baseCredData,
-                secret: envData.isModified && envData.content.trim() !== "" ? envData.content : undefined
-              })
-            );
-          } else if (envData.isModified && envData.content.trim() !== "") {
-            // Create new (only if it has content)
-            promises.push(
-              createCredential(baseCredData)
-            );
-          }
-        }
+      for (const credId of deletedCredentialIds) {
+        promises.push(deleteCredential(credId));
       }
-      
-      if (promises.length === 0 && !isEditing) {
-        setError("Please provide .env content for at least one folder/environment.");
-        return;
+
+      for (const file of files) {
+        const baseCredData: CredentialFormData = {
+          ...formData,
+          type: "env",
+          username: file.path,
+          environment: file.environment || undefined,
+          secret: file.isModified ? file.content : "",
+        };
+
+        if (file.credentialId) {
+          promises.push(
+            updateCredential(file.credentialId, {
+              ...baseCredData,
+              secret: file.isModified && file.content.trim() !== "" ? file.content : undefined,
+            })
+          );
+        } else if (file.isModified || file.content.trim() !== "") {
+          promises.push(createCredential(baseCredData));
+        }
       }
 
       const results = await Promise.all(promises);
-      const failed = results.find(r => !r.success);
-      
+      const failed = results.find((r) => !r.success);
+
       if (failed) {
-        setError(failed.error || "Failed to save some env files");
+        setError(failed.error || "Failed to save project files");
       } else {
         setSuccess(true);
         setTimeout(() => {
@@ -282,54 +415,58 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     });
   };
 
-  const activeFolderData = activeFile ? folders[activeFile.folder] : null;
-  const currentEnvData = activeFolderData && activeFile ? activeFolderData[activeFile.env] : null;
+  const activeFileNode = files.find((f) => f.id === activeFileId) || null;
 
-  const toggleFolder = (folder: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setExpandedFolders(prev => ({ ...prev, [folder]: prev[folder] === false ? true : false }));
+  // File type icon renderer with rich colors
+  const renderFileIcon = (fileName: string) => {
+    if (fileName.startsWith(".env")) {
+      return <FileCode2 className="h-4 w-4 text-emerald-400 shrink-0 drop-shadow-xs" />;
+    }
+    if (/\.(js|jsx|ts|tsx)$/.test(fileName)) {
+      return <FileCode2 className="h-4 w-4 text-sky-400 shrink-0 drop-shadow-xs" />;
+    }
+    if (/\.(json|yaml|yml|toml)$/.test(fileName)) {
+      return <FileCode2 className="h-4 w-4 text-amber-400 shrink-0 drop-shadow-xs" />;
+    }
+    return <FileText className="h-4 w-4 text-slate-400 shrink-0" />;
   };
 
-  // Compute visible folders for the tree view
-  const sortedFolders = Object.keys(folders).sort();
-  const visibleFolders = sortedFolders.filter(folder => {
-    if (folder === "/") return true;
-    
-    const parts = folder.split("/").filter(Boolean);
-    let parentPath = "";
-    for (let i = 0; i < parts.length - 1; i++) {
-      parentPath += `/${parts[i]}`;
-      // Hide if any parent is explicitly collapsed
-      if (expandedFolders[parentPath] === false) {
-        return false;
-      }
-    }
-    return true;
-  });
+  // Line numbers calculation for active file editor
+  const lineNumbers = useMemo(() => {
+    if (!activeFileNode) return [];
+    const count = (activeFileNode.content.match(/\n/g) || []).length + 1;
+    return Array.from({ length: Math.max(count, 16) }, (_, i) => i + 1);
+  }, [activeFileNode]);
 
   return (
     <>
       <form onSubmit={handleSubmit} className="space-y-6">
         {success && (
-          <div className="rounded-md bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
-            {isEditing ? "Project envs updated successfully!" : "Project envs created successfully!"}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-2 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <Sparkles className="h-5 w-5 shrink-0 text-emerald-500" />
+            {isEditing ? "Project vault files updated successfully!" : "Project environment vault created successfully!"}
           </div>
         )}
         {error && (
-          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm font-medium text-destructive flex items-center gap-2 shadow-sm">
+            <Trash2 className="h-5 w-5 shrink-0" />
             {error}
           </div>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Details</CardTitle>
+        {/* Project Details Card */}
+        <Card className="border-border/60 bg-gradient-to-br from-card via-card to-muted/20 shadow-sm rounded-xl overflow-hidden">
+          <CardHeader className="border-b border-border/40 bg-muted/20 py-4 px-6">
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
+              <FolderGit2 className="h-5 w-5 text-primary" />
+              Project Settings & Metadata
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
+          <CardContent className="p-6">
+            <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
-                <label htmlFor="title" className="text-sm font-medium">
-                  Project Title *
+                <label htmlFor="title" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <FolderGit2 className="h-3.5 w-3.5" /> Project Name *
                 </label>
                 <Input
                   id="title"
@@ -337,13 +474,14 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   required
                   disabled={isPending}
-                  placeholder="e.g., My Startup"
+                  placeholder="e.g., Core Auth Microservice"
+                  className="bg-background/80 border-border/80 focus:ring-2 focus:ring-primary/20 transition-all font-medium"
                 />
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="website_url" className="text-sm font-medium">
-                  Project URL / GitHub Repo *
+                <label htmlFor="website_url" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Globe className="h-3.5 w-3.5" /> Repository / Website URL *
                 </label>
                 <Input
                   id="website_url"
@@ -352,91 +490,218 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                   onChange={(e) => setFormData({ ...formData, website_url: e.target.value })}
                   required
                   disabled={isPending}
-                  placeholder="https://github.com/org/repo"
+                  placeholder="https://github.com/organization/repository"
+                  className="bg-background/80 border-border/80 focus:ring-2 focus:ring-primary/20 transition-all font-medium"
                 />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid md:grid-cols-4 gap-6">
-          {/* Folders Sidebar */}
-          <Card className="md:col-span-1 h-fit">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-              <CardTitle className="text-lg">Folders</CardTitle>
-              <Button type="button" variant="ghost" size="icon" onClick={handleAddFolder} className="h-8 w-8">
-                <Plus className="h-4 w-4" />
-              </Button>
+        {/* Main Explorer & Code Editor Section */}
+        <div className="grid md:grid-cols-4 gap-6 min-h-[580px]">
+          {/* File Explorer Sidebar */}
+          <Card className="md:col-span-1 h-full flex flex-col border-border/60 shadow-sm rounded-xl overflow-hidden bg-card">
+            <CardHeader className="flex flex-col gap-2 p-3 border-b border-border/40 bg-muted/30">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <FolderIcon className="h-4 w-4 text-blue-500" />
+                  Explorer
+                </CardTitle>
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={() => openCreateDialog("file", "/")}
+                    title="New File in Root"
+                  >
+                    <FilePlus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={() => openCreateDialog("folder", "/")}
+                    title="New Folder in Root"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-muted"
+                    onClick={toggleExpandAll}
+                    title="Toggle Expand All"
+                  >
+                    <ChevronsUpDown className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Quick Search Filter Input */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder="Filter files..."
+                  className="h-8 pl-8 text-xs bg-background/60 border-border/60 focus:ring-1 focus:ring-primary/20"
+                />
+              </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="flex flex-col p-2 gap-1 overflow-x-auto">
-                {visibleFolders.map((folder) => {
-                  const folderData = folders[folder];
-                  const isExpanded = expandedFolders[folder] !== false; // true by default
-                  
+            
+            <CardContent className="p-2 flex-1 overflow-y-auto font-mono text-xs select-none">
+              <div className="flex flex-col gap-0.5">
+                {folderList.map((folder) => {
                   const parts = folder === "/" ? [] : folder.split("/").filter(Boolean);
                   const depth = parts.length;
-                  const name = depth === 0 ? "/" : parts[parts.length - 1];
-                  
-                  // Calculate padding based on depth
-                  const folderPadding = depth === 0 ? 8 : depth * 16;
-                  const filesPadding = folderPadding + 24;
+                  const name = depth === 0 ? "root (/)" : parts[parts.length - 1];
+                  const isExpanded = expandedFolders[folder] !== false;
+
+                  // Parent expand condition
+                  if (folder !== "/") {
+                    let parentPath = "";
+                    for (let i = 0; i < parts.length - 1; i++) {
+                      parentPath += `/${parts[i]}`;
+                      if (expandedFolders[parentPath] === false) {
+                        return null;
+                      }
+                    }
+                  }
+
+                  const directFiles = filteredFiles.filter((f) => f.folderPath === folder);
+                  const indentPx = depth * 12 + 6;
 
                   return (
                     <div key={folder} className="flex flex-col">
+                      {/* Folder Row */}
                       <div
-                        className="flex items-center justify-between rounded-md py-1.5 text-sm cursor-pointer hover:bg-muted transition-colors group"
-                        style={{ paddingLeft: `${folderPadding}px`, paddingRight: '8px' }}
-                        onClick={(e) => toggleFolder(folder, e)}
+                        className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/70 cursor-pointer group transition-colors"
+                        style={{ paddingLeft: `${indentPx}px` }}
+                        onClick={() =>
+                          setExpandedFolders((prev) => ({
+                            ...prev,
+                            [folder]: prev[folder] === false ? true : false,
+                          }))
+                        }
                       >
                         <div className="flex items-center gap-1.5 truncate">
                           {isExpanded ? (
-                            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           )}
-                          <FolderIcon className="h-4 w-4 shrink-0 text-blue-500/80" />
-                          <span className="truncate font-medium">{name}</span>
+                          <FolderIcon className="h-3.5 w-3.5 text-blue-500 fill-blue-500/20 shrink-0" />
+                          <span className="font-medium text-foreground truncate">{name}</span>
                         </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setFolderToDelete(folder);
-                            setShowDeleteDialog(true);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+
+                        {/* Folder Actions */}
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCreateDialog("file", folder);
+                            }}
+                            title={`New File in ${name}`}
+                          >
+                            <FilePlus className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCreateDialog("folder", folder);
+                            }}
+                            title={`New Folder in ${name}`}
+                          >
+                            <FolderPlus className="h-3 w-3" />
+                          </Button>
+                          {folder !== "/" && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerDelete("folder", folder, folder);
+                              }}
+                              title={`Delete Folder ${name}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
 
-                      {isExpanded && (
-                        <div className="flex flex-col mt-1 space-y-1 relative" style={{ paddingLeft: `${filesPadding}px`, paddingRight: '8px' }}>
-                          <div className="absolute left-0 top-0 bottom-0 w-px bg-border/50" style={{ left: `${folderPadding + 7}px` }} />
-                          {(["prod", "staging", "dev"] as Environment[]).map((env) => {
-                            const isSelected = activeFile?.folder === folder && activeFile?.env === env;
-                            const hasSaved = !!folderData[env].credentialId;
-                            const hasPending = folderData[env].isModified && folderData[env].content.trim() !== "";
-                            const envLabel = env === "prod" ? "production" : env;
+                      {/* Files under folder */}
+                      {isExpanded && directFiles.length > 0 && (
+                        <div className="flex flex-col border-l border-border/30 ml-3.5 my-0.5 pl-1 space-y-0.5">
+                          {directFiles.map((file) => {
+                            const isSelected = file.id === activeFileId;
+                            const fileIndentPx = depth * 12 + 10;
 
                             return (
                               <div
-                                key={env}
-                                className={`flex items-center justify-between rounded-md px-2 py-1.5 text-xs cursor-pointer transition-colors ${
-                                  isSelected ? "bg-primary text-primary-foreground font-medium shadow-sm" : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                key={file.id}
+                                className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer group transition-all ${
+                                  isSelected
+                                    ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                    : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
                                 }`}
-                                onClick={() => setActiveFile({ folder, env })}
+                                style={{ paddingLeft: `${fileIndentPx}px` }}
+                                onClick={() => setActiveFileId(file.id)}
                               >
                                 <div className="flex items-center gap-2 truncate">
-                                  <FileCode2 className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                                  <span className="truncate">.env.{envLabel}</span>
+                                  {renderFileIcon(file.name)}
+                                  <span className="truncate">{file.name}</span>
                                 </div>
-                                <div className="flex gap-1.5 items-center">
-                                  {hasSaved && !hasPending && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-primary-foreground/70" : "bg-blue-500/70"}`} title="Saved"></span>}
-                                  {hasPending && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-green-300" : "bg-green-500"}`} title="Pending Changes"></span>}
+
+                                <div className="flex items-center gap-1.5">
+                                  {file.credentialId && !file.isModified && (
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full ${
+                                        isSelected ? "bg-primary-foreground" : "bg-sky-500"
+                                      }`}
+                                      title="Saved in Vault"
+                                    />
+                                  )}
+                                  {file.isModified && (
+                                    <span
+                                      className={`w-2 h-2 rounded-full ${
+                                        isSelected ? "bg-emerald-300" : "bg-emerald-500"
+                                      }`}
+                                      title="Unsaved changes"
+                                    />
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className={`h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity ${
+                                      isSelected
+                                        ? "text-primary-foreground/90 hover:text-primary-foreground"
+                                        : "text-muted-foreground hover:text-destructive"
+                                    }`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      triggerDelete("file", file.id, file.path);
+                                    }}
+                                    title={`Delete ${file.name}`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
                                 </div>
                               </div>
                             );
@@ -450,122 +715,248 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
             </CardContent>
           </Card>
 
-          {/* Environment Editor */}
-          <Card className="md:col-span-3">
-            <CardHeader className="pb-4 border-b">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileCode2 className="h-5 w-5 text-muted-foreground" />
-                  {activeFile ? `${activeFile.folder === '/' ? '' : activeFile.folder}/.env.${activeFile.env === 'prod' ? 'production' : activeFile.env}` : "Select a file"}
-                </CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {/* Current Env View/Edit */}
-              {activeFile && currentEnvData ? (
-                <div className="space-y-4">
-                  {currentEnvData.credentialId && currentEnvData.encrypted_secret && !currentEnvData.isModified && (
-                    <div className="space-y-2 border rounded-md p-4 bg-muted/30">
-                      <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Current Saved Content
-                        </label>
-                        <Button 
-                          type="button" 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => updateEnvContent(activeFile.folder, activeFile.env, " ")} // Trigger modified state
-                        >
-                          Replace Content
-                        </Button>
+          {/* VS Code Styled Editor Area */}
+          <Card className="md:col-span-3 flex flex-col border-border/60 shadow-sm rounded-xl overflow-hidden bg-slate-950 text-slate-100 dark:bg-slate-950">
+            {/* Editor Tab & Header */}
+            <div className="py-2.5 px-4 bg-slate-900 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+              {activeFileNode ? (
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 bg-slate-950 px-3 py-1 rounded-md border border-slate-800 shadow-xs">
+                    {renderFileIcon(activeFileNode.name)}
+                    <span className="font-mono text-xs font-semibold text-slate-200 truncate">
+                      {activeFileNode.path}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-slate-400 hover:text-slate-100"
+                      onClick={() => handleCopyPath(activeFileNode.path)}
+                      title="Copy file path"
+                    >
+                      {copiedPath ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                    </Button>
+                  </div>
+
+                  {activeFileNode.isModified ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      Unsaved Edits
+                    </span>
+                  ) : activeFileNode.credentialId ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center gap-1">
+                      <ShieldCheck className="h-3 w-3" /> Vault Secured
+                    </span>
+                  ) : null}
+                </div>
+              ) : (
+                <span className="text-xs text-slate-400">No file selected</span>
+              )}
+
+              {activeFileNode && activeFileNode.credentialId && activeFileNode.isModified && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={revertActiveFile}
+                  className="h-7 px-2.5 text-xs text-slate-400 hover:text-slate-100 hover:bg-slate-800 flex items-center gap-1"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Revert Edits
+                </Button>
+              )}
+            </div>
+
+            {/* Editor Body */}
+            <CardContent className="p-0 flex-1 flex flex-col">
+              {activeFileNode ? (
+                <div className="flex-1 flex flex-col">
+                  {/* Saved Content Decryption Lock */}
+                  {activeFileNode.credentialId &&
+                    activeFileNode.encrypted_secret &&
+                    !activeFileNode.isModified && (
+                      <div className="m-4 border border-slate-800 rounded-xl p-5 bg-slate-900/50 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="h-4 w-4 text-sky-400" />
+                            <span className="text-xs font-semibold text-slate-300">
+                              AES-256 Encrypted Vault Secret
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-1.5"
+                            onClick={() => updateActiveFileContent(" ")}
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            Replace Content
+                          </Button>
+                        </div>
+                        <PasswordReveal
+                          key={`${activeFileNode.credentialId}-${activeFileNode.id}`}
+                          encryptedSecret={activeFileNode.encrypted_secret}
+                          credentialId={activeFileNode.credentialId}
+                          onDecrypt={decryptSecret}
+                          isMultiline={true}
+                        />
                       </div>
-                      <PasswordReveal
-                        key={`${currentEnvData.credentialId}-${activeFile.env}`}
-                        encryptedSecret={currentEnvData.encrypted_secret}
-                        credentialId={currentEnvData.credentialId}
-                        onDecrypt={decryptSecret}
-                        isMultiline={true}
+                    )}
+
+                  {/* Code Textarea with Line Numbers */}
+                  {(!activeFileNode.credentialId || activeFileNode.isModified) && (
+                    <div className="flex-1 flex relative font-mono text-xs bg-slate-950">
+                      {/* Line Numbers Column */}
+                      <div className="py-3 px-2 text-right select-none text-slate-600 bg-slate-900/50 border-r border-slate-900 min-w-[3rem] font-mono leading-relaxed">
+                        {lineNumbers.map((num) => (
+                          <div key={num}>{num}</div>
+                        ))}
+                      </div>
+
+                      {/* Code Textarea */}
+                      <textarea
+                        id={`editor-${activeFileNode.id}`}
+                        value={activeFileNode.content}
+                        onChange={(e) => updateActiveFileContent(e.target.value)}
+                        className="w-full flex-1 min-h-[380px] bg-transparent p-3 text-slate-100 font-mono text-xs leading-relaxed focus:outline-none resize-y selection:bg-blue-500/30"
+                        disabled={isPending}
+                        placeholder={`Write or paste content for ${activeFileNode.path}...`}
+                        spellCheck={false}
                       />
                     </div>
                   )}
 
-                  {(!currentEnvData.credentialId || currentEnvData.isModified) && (
-                    <div className="space-y-2">
-                       {currentEnvData.credentialId && currentEnvData.isModified && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-xs font-medium text-amber-500">Replacing existing content</span>
-                          <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-6 px-2 text-xs"
-                            onClick={() => {
-                              // Revert modification
-                              setFolders(prev => ({
-                                ...prev,
-                                [activeFile.folder]: {
-                                  ...prev[activeFile.folder],
-                                  [activeFile.env]: {
-                                    ...prev[activeFile.folder][activeFile.env],
-                                    content: "",
-                                    isModified: false
-                                  }
-                                }
-                              }));
-                            }}
-                          >
-                            Cancel Replace
-                          </Button>
-                        </div>
-                      )}
-                      <textarea
-                        id={`secret-${activeFile.folder}-${activeFile.env}`}
-                        value={currentEnvData.content}
-                        onChange={(e) => updateEnvContent(activeFile.folder, activeFile.env, e.target.value)}
-                        rows={16}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        disabled={isPending}
-                        placeholder={`Paste .env content for ${activeFile.folder}/.env.${activeFile.env === 'prod' ? 'production' : activeFile.env} here...`}
-                      />
+                  {/* Status Bar */}
+                  <div className="py-1.5 px-4 bg-slate-900 border-t border-slate-800 text-[11px] font-mono text-slate-400 flex items-center justify-between select-none">
+                    <div className="flex items-center gap-4">
+                      <span>Lines: {lineNumbers.length}</span>
+                      <span>Length: {activeFileNode.content.length} chars</span>
                     </div>
-                  )}
+                    <div className="flex items-center gap-2">
+                      <span className="uppercase text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-300">
+                        {activeFileNode.name.split(".").pop() || "txt"}
+                      </span>
+                      <span>UTF-8</span>
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                  <FileCode2 className="h-12 w-12 mb-4 opacity-20" />
-                  <p>Select a file from the sidebar to view or edit its contents.</p>
+                <div className="flex flex-col items-center justify-center h-80 text-slate-500 space-y-3">
+                  <FileCode2 className="h-12 w-12 opacity-20 text-slate-400" />
+                  <p className="text-sm font-medium">Select a file from the Explorer to edit content</p>
                 </div>
               )}
             </CardContent>
           </Card>
         </div>
-        
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex gap-2">
-              <Button type="submit" disabled={isPending} className="flex-1 md:flex-none">
-                {isPending ? "Saving..." : "Save Project"}
-              </Button>
+
+        {/* Action Controls */}
+        <Card className="border-border/60 bg-gradient-to-r from-card to-card/80 shadow-sm rounded-xl">
+          <CardContent className="py-4 px-6">
+            <div className="flex flex-col sm:flex-row gap-3 justify-end">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => router.back()}
                 disabled={isPending}
-                className="flex-1 md:flex-none"
+                className="px-6 border-border/80"
               >
                 Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={isPending} 
+                className="px-8 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm transition-all"
+              >
+                {isPending ? "Saving Vault..." : isEditing ? "Save Changes" : "Create Project Vault"}
               </Button>
             </div>
           </CardContent>
         </Card>
       </form>
 
+      {/* Item Creation Modal */}
+      <Dialog
+        open={createDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setCreateDialog({ open: false, type: "file", targetFolder: "/" });
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px] rounded-xl border-border/80">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              {createDialog.type === "file" ? <FilePlus className="h-4 w-4 text-primary" /> : <FolderPlus className="h-4 w-4 text-blue-500" />}
+              Create New {createDialog.type === "file" ? "File" : "Folder"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                <FolderIcon className="h-3 w-3" /> Target Directory: <span className="font-semibold text-foreground">{createDialog.targetFolder}</span>
+              </label>
+              <Input
+                value={newItemName}
+                onChange={(e) => setNewItemName(e.target.value)}
+                placeholder={
+                  createDialog.type === "file" ? "e.g., app.js or .env.local" : "e.g., backend"
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleConfirmCreate();
+                  }
+                }}
+                autoFocus
+                className="font-mono text-sm"
+              />
+              {createError && <p className="text-xs text-destructive mt-1 font-medium">{createError}</p>}
+            </div>
+
+            {/* Quick Presets for Files */}
+            {createDialog.type === "file" && (
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Quick Presets</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {[" .env.production", ".env.staging", ".env.local", "app.js", "server.ts"].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setNewItemName(preset.trim())}
+                      className="px-2 py-1 rounded bg-muted/60 hover:bg-muted text-[11px] font-mono transition-colors border border-border/40"
+                    >
+                      {preset.trim()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCreateDialog({ open: false, type: "file", targetFolder: "/" })}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleConfirmCreate}>
+              Create {createDialog.type === "file" ? "File" : "Folder"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
-        onConfirm={confirmDeleteFolder}
-        itemName={`Folder ${folderToDelete}`}
+        open={deleteConfirm.open}
+        onOpenChange={(open) => setDeleteConfirm((prev) => ({ ...prev, open }))}
+        onConfirm={handleConfirmDelete}
+        itemName={`${deleteConfirm.type === "file" ? "File" : "Folder"} ${deleteConfirm.label}`}
       />
     </>
   );
 }
+
+
