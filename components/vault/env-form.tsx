@@ -217,22 +217,38 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
 
   // Helper to resolve normalized path regardless of user typing leading slash or folder prefix
   const resolveItemPath = (targetFolder: string, inputName: string): string => {
-    let cleanInput = inputName.trim().replace(/\\/g, "/");
-    // Strip leading slashes
-    cleanInput = cleanInput.replace(/^\/+/, "");
+    let rawInput = inputName.trim().replace(/\\/g, "/");
+    rawInput = rawInput.replace(/^\/+/, "").replace(/\/+$/, "");
 
-    const cleanTarget = targetFolder === "/" ? "" : targetFolder.replace(/\/+$/, "");
-    const targetNameNoSlash = cleanTarget.replace(/^\/+/, "");
+    let cleanTarget = targetFolder === "/" ? "" : targetFolder.replace(/^\/+/, "").replace(/\/+$/, "");
 
-    // Case-insensitive check if input starts with target folder prefix
-    if (targetNameNoSlash && cleanInput.toLowerCase().startsWith(targetNameNoSlash.toLowerCase() + "/")) {
-      cleanInput = cleanInput.substring(targetNameNoSlash.length + 1);
-    } else if (targetNameNoSlash && cleanInput.toLowerCase() === targetNameNoSlash.toLowerCase()) {
-      cleanInput = "";
+    if (!rawInput) {
+      return cleanTarget ? `/${cleanTarget}` : "/";
     }
 
-    const combined = cleanTarget ? `${cleanTarget}/${cleanInput}` : `/${cleanInput}`;
-    return combined.replace(/\/+/g, "/");
+    if (cleanTarget) {
+      const targetParts = cleanTarget.toLowerCase().split("/");
+      const inputParts = rawInput.split("/");
+
+      let matchCount = 0;
+      for (let k = targetParts.length; k > 0; k--) {
+        const targetSuffix = targetParts.slice(targetParts.length - k).join("/");
+        const inputPrefix = inputParts.slice(0, k).map((p) => p.toLowerCase()).join("/");
+        if (targetSuffix === inputPrefix) {
+          matchCount = k;
+          break;
+        }
+      }
+
+      if (matchCount > 0) {
+        const remainingInput = inputParts.slice(matchCount).join("/");
+        return remainingInput ? `/${cleanTarget}/${remainingInput}` : `/${cleanTarget}`;
+      }
+
+      return `/${cleanTarget}/${rawInput}`;
+    }
+
+    return `/${rawInput}`;
   };
 
   // Helper to move file or folder inside explorer tree
@@ -373,9 +389,12 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     const normalizedPath = resolveItemPath(createDialog.targetFolder, trimmed);
 
     if (normalizedPath === "/" || normalizedPath === createDialog.targetFolder) {
-      setCreateError("Please enter a valid file or folder name.");
+      setCreateError(`Please enter a valid filename to create inside ${createDialog.targetFolder === "/" ? "root" : createDialog.targetFolder}.`);
       return;
     }
+
+    // Clear search filter so newly created item is immediately visible
+    setSearchFilter("");
 
     if (createDialog.type === "folder") {
       if (folderList.includes(normalizedPath)) {
@@ -395,6 +414,10 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       const lastSlash = normalizedPath.lastIndexOf("/");
       const folderPath = lastSlash <= 0 ? "/" : normalizedPath.substring(0, lastSlash);
       const name = normalizedPath.substring(lastSlash + 1);
+
+      if (folderPath !== "/") {
+        setCustomFolders((prev) => Array.from(new Set([...prev, folderPath])));
+      }
 
       let env: Environment | null = null;
       if (normalizedPath.endsWith(".env.production") || normalizedPath.endsWith(".env.prod")) {
