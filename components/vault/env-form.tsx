@@ -29,7 +29,9 @@ import {
   Globe,
   FolderGit2,
   Sparkles,
-  FileCheck
+  FileCheck,
+  Upload,
+  GripVertical
 } from "lucide-react";
 
 import type { CredentialWithTags, CredentialFormData, Environment } from "@/lib/types";
@@ -77,6 +79,15 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({ "/": true });
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [deletedCredentialIds, setDeletedCredentialIds] = useState<string[]>([]);
+
+  // Drag and drop state
+  const [draggedItem, setDraggedItem] = useState<{
+    type: "file" | "folder";
+    id?: string;
+    path: string;
+  } | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [isExternalDragOver, setIsExternalDragOver] = useState(false);
 
   // Dialog state for item creation (File / Folder)
   const [createDialog, setCreateDialog] = useState<{
@@ -222,6 +233,132 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
 
     const combined = cleanTarget ? `${cleanTarget}/${cleanInput}` : `/${cleanInput}`;
     return combined.replace(/\/+/g, "/");
+  };
+
+  // Helper to move file or folder inside explorer tree
+  const moveItemToFolder = (
+    item: { type: "file" | "folder"; id?: string; path: string },
+    targetFolder: string
+  ) => {
+    if (item.type === "file") {
+      const fileName = item.path.split("/").pop() || "file";
+      const newPath = targetFolder === "/" ? `/${fileName}` : `${targetFolder}/${fileName}`;
+
+      if (newPath === item.path) return;
+
+      if (files.some((f) => f.path === newPath && f.id !== item.id)) {
+        setError(`A file named "${fileName}" already exists in ${targetFolder === "/" ? "root" : targetFolder}`);
+        return;
+      }
+
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id || f.path === item.path
+            ? {
+                ...f,
+                path: newPath,
+                folderPath: targetFolder,
+                isModified: true,
+              }
+            : f
+        )
+      );
+      expandAllAncestors(newPath);
+    } else {
+      // Moving folder
+      if (targetFolder === item.path || targetFolder.startsWith(item.path + "/")) {
+        return; // Cannot drop folder into itself or child
+      }
+
+      const folderName = item.path.split("/").pop() || "folder";
+      const newFolderPath = targetFolder === "/" ? `/${folderName}` : `${targetFolder}/${folderName}`;
+
+      if (newFolderPath === item.path) return;
+
+      // Update custom folders
+      setCustomFolders((prev) =>
+        prev.map((f) => {
+          if (f === item.path) return newFolderPath;
+          if (f.startsWith(item.path + "/")) {
+            return newFolderPath + f.substring(item.path.length);
+          }
+          return f;
+        })
+      );
+
+      // Update file paths
+      setFiles((prev) =>
+        prev.map((f) => {
+          if (f.folderPath === item.path || f.folderPath.startsWith(item.path + "/")) {
+            const updatedFolderPath = newFolderPath + f.folderPath.substring(item.path.length);
+            const updatedPath = newFolderPath + f.path.substring(item.path.length);
+            return {
+              ...f,
+              path: updatedPath,
+              folderPath: updatedFolderPath,
+              isModified: true,
+            };
+          }
+          return f;
+        })
+      );
+
+      expandAllAncestors(newFolderPath);
+    }
+  };
+
+  // Helper to handle dropped external files from computer
+  const handleExternalFilesDrop = async (
+    fileList: FileList | File[],
+    targetFolder: string = "/"
+  ) => {
+    const fileArray = Array.from(fileList);
+    if (fileArray.length === 0) return;
+
+    const newNodes: FileNode[] = [];
+    let lastId: string | null = null;
+
+    for (const file of fileArray) {
+      try {
+        const text = await file.text();
+        const name = file.name;
+        const path = targetFolder === "/" ? `/${name}` : `${targetFolder}/${name}`;
+
+        let env: Environment | null = null;
+        if (path.endsWith(".env.production") || path.endsWith(".env.prod")) {
+          env = "prod";
+        } else if (path.endsWith(".env.staging")) {
+          env = "staging";
+        } else if (path.endsWith(".env.dev")) {
+          env = "dev";
+        }
+
+        const fileNode: FileNode = {
+          id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          path,
+          name,
+          folderPath: targetFolder,
+          content: text,
+          isModified: true,
+          environment: env,
+        };
+
+        newNodes.push(fileNode);
+        lastId = fileNode.id;
+      } catch {
+        // Ignore unreadable binary files
+      }
+    }
+
+    if (newNodes.length > 0) {
+      setFiles((prev) => {
+        const existingPaths = new Set(newNodes.map((n) => n.path));
+        const filtered = prev.filter((f) => !existingPaths.has(f.path));
+        return [...filtered, ...newNodes];
+      });
+      expandAllAncestors(targetFolder);
+      if (lastId) setActiveFileId(lastId);
+    }
   };
 
   // Execute creation of file or folder
@@ -534,7 +671,38 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
         </Card>
 
         {/* Main Explorer & Code Editor Section */}
-        <div className="grid md:grid-cols-4 gap-6 min-h-[580px]">
+        <div 
+          className="grid md:grid-cols-4 gap-6 min-h-[580px] relative"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsExternalDragOver(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setIsExternalDragOver(false);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsExternalDragOver(false);
+            setDragOverFolder(null);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              handleExternalFilesDrop(e.dataTransfer.files, "/");
+            } else if (draggedItem) {
+              moveItemToFolder(draggedItem, "/");
+              setDraggedItem(null);
+            }
+          }}
+        >
+          {/* External Drag & Drop Overlay Indicator */}
+          {isExternalDragOver && (
+            <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-xs border-2 border-dashed border-primary rounded-xl flex flex-col items-center justify-center text-primary font-medium p-6 pointer-events-none animate-in fade-in duration-150">
+              <Upload className="h-12 w-12 mb-2 animate-bounce" />
+              <p className="text-base font-semibold">Drop files here to import into Vault</p>
+              <p className="text-xs text-muted-foreground mt-1">Files will be added directly into your project explorer</p>
+            </div>
+          )}
+
           {/* File Explorer Sidebar */}
           <Card className="md:col-span-1 h-full flex flex-col border-border/60 shadow-sm rounded-xl overflow-hidden bg-card">
             <CardHeader className="flex flex-col gap-2 p-3 border-b border-border/40 bg-muted/30">
@@ -596,6 +764,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                   const depth = parts.length;
                   const name = depth === 0 ? "root (/)" : parts[parts.length - 1];
                   const isExpanded = expandedFolders[folder] !== false;
+                  const isTargetHovered = dragOverFolder === folder;
 
                   // Parent expand condition
                   if (folder !== "/") {
@@ -615,7 +784,35 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                     <div key={folder} className="flex flex-col">
                       {/* Folder Row */}
                       <div
-                        className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/70 cursor-pointer group transition-colors"
+                        draggable={folder !== "/"}
+                        onDragStart={(e) => {
+                          e.stopPropagation();
+                          e.dataTransfer.setData("text/plain", folder);
+                          setDraggedItem({ type: "folder", path: folder });
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverFolder(folder);
+                        }}
+                        onDragLeave={(e) => {
+                          e.stopPropagation();
+                          if (dragOverFolder === folder) setDragOverFolder(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverFolder(null);
+                          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                            handleExternalFilesDrop(e.dataTransfer.files, folder);
+                          } else if (draggedItem) {
+                            moveItemToFolder(draggedItem, folder);
+                            setDraggedItem(null);
+                          }
+                        }}
+                        className={`flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/70 cursor-pointer group transition-all ${
+                          isTargetHovered ? "bg-primary/20 ring-2 ring-primary/40" : ""
+                        }`}
                         style={{ paddingLeft: `${indentPx}px` }}
                         onClick={() =>
                           setExpandedFolders((prev) => ({
@@ -690,7 +887,13 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                             return (
                               <div
                                 key={file.id}
-                                className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-pointer group transition-all ${
+                                draggable={true}
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  e.dataTransfer.setData("text/plain", file.path);
+                                  setDraggedItem({ type: "file", id: file.id, path: file.path });
+                                }}
+                                className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-grab active:cursor-grabbing group transition-all ${
                                   isSelected
                                     ? "bg-primary text-primary-foreground font-semibold shadow-xs"
                                     : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
