@@ -135,11 +135,11 @@ export function PasswordReveal({
     <>
       <div className={`flex ${isMultiline && revealed && secret ? "flex-col items-start w-full" : "items-center min-w-0 flex-wrap"} gap-2`}>
         {isMultiline && revealed && secret ? (
-          <pre className="font-mono text-sm bg-muted p-3 rounded-md w-full overflow-x-auto whitespace-pre-wrap break-all">
+          <pre className="font-mono text-sm bg-slate-900 text-slate-100 border border-slate-800 p-3.5 rounded-lg w-full overflow-x-auto whitespace-pre-wrap break-all shadow-inner selection:bg-blue-500/40">
             {secret}
           </pre>
         ) : (
-          <span className="font-mono text-sm break-all max-w-full">
+          <span className="font-mono text-sm break-all max-w-full text-current">
             {revealed && secret ? secret : maskSecret("••••••••", 0)}
           </span>
         )}
@@ -148,7 +148,7 @@ export function PasswordReveal({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={handleReveal}
             disabled={loading}
             title={secret ? (revealed ? "Hide password" : "Show password") : "Verify master password to view"}
@@ -166,12 +166,12 @@ export function PasswordReveal({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
               onClick={handleCopy}
               title="Copy to clipboard (clears after 10s)"
             >
               {copied ? (
-                <Check className="h-4 w-4 text-green-500" />
+                <Check className="h-4 w-4 text-emerald-500" />
               ) : (
                 <Copy className="h-4 w-4" />
               )}

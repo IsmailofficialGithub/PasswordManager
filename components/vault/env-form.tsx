@@ -774,7 +774,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                   {activeFileNode.credentialId &&
                     activeFileNode.encrypted_secret &&
                     !activeFileNode.isModified && (
-                      <div className="m-4 border border-slate-800 rounded-xl p-5 bg-slate-900/50 space-y-4">
+                      <div className="m-4 border border-slate-800 rounded-xl p-5 bg-slate-900/50 space-y-4 text-slate-100">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <ShieldCheck className="h-4 w-4 text-sky-400" />
