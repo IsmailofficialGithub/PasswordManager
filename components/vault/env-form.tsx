@@ -224,10 +224,10 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     const cleanTarget = targetFolder === "/" ? "" : targetFolder.replace(/\/+$/, "");
     const targetNameNoSlash = cleanTarget.replace(/^\/+/, "");
 
-    // If input starts with target folder prefix (e.g. "app/file.txt" when target is "/app")
-    if (targetNameNoSlash && cleanInput.startsWith(targetNameNoSlash + "/")) {
+    // Case-insensitive check if input starts with target folder prefix
+    if (targetNameNoSlash && cleanInput.toLowerCase().startsWith(targetNameNoSlash.toLowerCase() + "/")) {
       cleanInput = cleanInput.substring(targetNameNoSlash.length + 1);
-    } else if (targetNameNoSlash && cleanInput === targetNameNoSlash) {
+    } else if (targetNameNoSlash && cleanInput.toLowerCase() === targetNameNoSlash.toLowerCase()) {
       cleanInput = "";
     }
 
@@ -1127,10 +1127,29 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground font-mono flex items-center gap-1">
-                <FolderIcon className="h-3 w-3" /> Target Directory: <span className="font-semibold text-foreground">{createDialog.targetFolder}</span>
+              <label htmlFor="targetFolderSelect" className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                <FolderIcon className="h-3.5 w-3.5 text-blue-500" /> Target Directory
+              </label>
+              <select
+                id="targetFolderSelect"
+                value={createDialog.targetFolder}
+                onChange={(e) => setCreateDialog((prev) => ({ ...prev, targetFolder: e.target.value }))}
+                className="w-full h-9 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-mono text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+              >
+                {folderList.map((f) => (
+                  <option key={f} value={f}>
+                    {f === "/" ? "/ (root)" : f}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="newItemInput" className="text-xs text-muted-foreground font-mono flex items-center gap-1">
+                {createDialog.type === "file" ? <FileText className="h-3.5 w-3.5 text-emerald-500" /> : <FolderIcon className="h-3.5 w-3.5 text-blue-500" />} {createDialog.type === "file" ? "File" : "Folder"} Name *
               </label>
               <Input
+                id="newItemInput"
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
                 placeholder={
