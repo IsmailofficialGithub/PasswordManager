@@ -192,6 +192,38 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     setCreateError("");
   };
 
+  // Helper to expand all ancestor folders for a given path
+  const expandAllAncestors = (path: string) => {
+    const parts = path.split("/").filter(Boolean);
+    const updates: Record<string, boolean> = { "/": true };
+    let current = "";
+    for (let i = 0; i < parts.length; i++) {
+      current += `/${parts[i]}`;
+      updates[current] = true;
+    }
+    setExpandedFolders((prev) => ({ ...prev, ...updates }));
+  };
+
+  // Helper to resolve normalized path regardless of user typing leading slash or folder prefix
+  const resolveItemPath = (targetFolder: string, inputName: string): string => {
+    let cleanInput = inputName.trim().replace(/\\/g, "/");
+    // Strip leading slashes
+    cleanInput = cleanInput.replace(/^\/+/, "");
+
+    const cleanTarget = targetFolder === "/" ? "" : targetFolder.replace(/\/+$/, "");
+    const targetNameNoSlash = cleanTarget.replace(/^\/+/, "");
+
+    // If input starts with target folder prefix (e.g. "app/file.txt" when target is "/app")
+    if (targetNameNoSlash && cleanInput.startsWith(targetNameNoSlash + "/")) {
+      cleanInput = cleanInput.substring(targetNameNoSlash.length + 1);
+    } else if (targetNameNoSlash && cleanInput === targetNameNoSlash) {
+      cleanInput = "";
+    }
+
+    const combined = cleanTarget ? `${cleanTarget}/${cleanInput}` : `/${cleanInput}`;
+    return combined.replace(/\/+/g, "/");
+  };
+
   // Execute creation of file or folder
   const handleConfirmCreate = () => {
     setCreateError("");
@@ -201,17 +233,20 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       return;
     }
 
-    const parent = createDialog.targetFolder === "/" ? "" : createDialog.targetFolder;
-    const fullPath = trimmed.startsWith("/") ? trimmed : `${parent}/${trimmed}`;
-    const normalizedPath = fullPath.replace(/\/+/g, "/");
+    const normalizedPath = resolveItemPath(createDialog.targetFolder, trimmed);
+
+    if (normalizedPath === "/" || normalizedPath === createDialog.targetFolder) {
+      setCreateError("Please enter a valid file or folder name.");
+      return;
+    }
 
     if (createDialog.type === "folder") {
       if (folderList.includes(normalizedPath)) {
         setCreateError("Folder already exists.");
         return;
       }
-      setCustomFolders((prev) => [...prev, normalizedPath]);
-      setExpandedFolders((prev) => ({ ...prev, [createDialog.targetFolder]: true, [normalizedPath]: true }));
+      setCustomFolders((prev) => Array.from(new Set([...prev, normalizedPath])));
+      expandAllAncestors(normalizedPath);
       setCreateDialog({ open: false, type: "file", targetFolder: "/" });
     } else {
       // Create File
@@ -244,7 +279,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       };
 
       setFiles((prev) => [...prev, newFileNode]);
-      setExpandedFolders((prev) => ({ ...prev, [folderPath]: true, [createDialog.targetFolder]: true }));
+      expandAllAncestors(normalizedPath);
       setActiveFileId(newFileNode.id);
       setCreateDialog({ open: false, type: "file", targetFolder: "/" });
     }
@@ -585,7 +620,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                         onClick={() =>
                           setExpandedFolders((prev) => ({
                             ...prev,
-                            [folder]: prev[folder] === false ? true : false,
+                            [folder]: !isExpanded,
                           }))
                         }
                       >
