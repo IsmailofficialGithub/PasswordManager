@@ -11,6 +11,7 @@ interface PasswordRevealProps {
   credentialId: string;
   onDecrypt: (credentialId: string) => Promise<{ success: boolean; secret?: string; error?: string }>;
   isMultiline?: boolean;
+  onSecretDecrypted?: (secret: string) => void;
 }
 
 const AUTO_LOCK_DURATION = 60000; // 1 minute in milliseconds
@@ -34,6 +35,7 @@ export function PasswordReveal({
   credentialId,
   onDecrypt,
   isMultiline = false,
+  onSecretDecrypted,
 }: PasswordRevealProps) {
   const [revealed, setRevealed] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
@@ -93,6 +95,9 @@ export function PasswordReveal({
     if (result.success && result.secret) {
       setSecret(result.secret);
       setRevealed(true);
+      if (onSecretDecrypted) {
+        onSecretDecrypted(result.secret);
+      }
       // Start the 1-minute auto-lock timer
       startAutoLockTimer();
     } else {

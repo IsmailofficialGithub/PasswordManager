@@ -201,6 +201,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     setCreateDialog({ open: true, type, targetFolder });
     setNewItemName("");
     setCreateError("");
+    expandAllAncestors(targetFolder);
   };
 
   // Helper to expand all ancestor folders for a given path
@@ -852,6 +853,9 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                           )}
                           <FolderIcon className="h-3.5 w-3.5 text-blue-500 fill-blue-500/20 shrink-0" />
                           <span className="font-medium text-foreground truncate">{name}</span>
+                          <span className="text-[10px] text-muted-foreground/70 font-sans ml-1">
+                            ({directFiles.length})
+                          </span>
                         </div>
 
                         {/* Folder Actions */}
@@ -901,72 +905,78 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                       </div>
 
                       {/* Files under folder */}
-                      {isExpanded && directFiles.length > 0 && (
+                      {isExpanded && (
                         <div className="flex flex-col border-l border-border/30 ml-3.5 my-0.5 pl-1 space-y-0.5">
-                          {directFiles.map((file) => {
-                            const isSelected = file.id === activeFileId;
-                            const fileIndentPx = depth * 12 + 10;
+                          {directFiles.length === 0 ? (
+                            <div className="py-1 px-3 text-[10px] text-muted-foreground/60 italic select-none">
+                              Empty folder (click + to add files)
+                            </div>
+                          ) : (
+                            directFiles.map((file) => {
+                              const isSelected = file.id === activeFileId;
+                              const fileIndentPx = depth * 12 + 10;
 
-                            return (
-                              <div
-                                key={file.id}
-                                draggable={true}
-                                onDragStart={(e) => {
-                                  e.stopPropagation();
-                                  e.dataTransfer.setData("text/plain", file.path);
-                                  setDraggedItem({ type: "file", id: file.id, path: file.path });
-                                }}
-                                className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-grab active:cursor-grabbing group transition-all ${
-                                  isSelected
-                                    ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                                    : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-                                }`}
-                                style={{ paddingLeft: `${fileIndentPx}px` }}
-                                onClick={() => setActiveFileId(file.id)}
-                              >
-                                <div className="flex items-center gap-2 truncate">
-                                  {renderFileIcon(file.name)}
-                                  <span className="truncate">{file.name}</span>
-                                </div>
+                              return (
+                                <div
+                                  key={file.id}
+                                  draggable={true}
+                                  onDragStart={(e) => {
+                                    e.stopPropagation();
+                                    e.dataTransfer.setData("text/plain", file.path);
+                                    setDraggedItem({ type: "file", id: file.id, path: file.path });
+                                  }}
+                                  className={`flex items-center justify-between py-1.5 px-2 rounded-md cursor-grab active:cursor-grabbing group transition-all ${
+                                    isSelected
+                                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                                      : "hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                                  }`}
+                                  style={{ paddingLeft: `${fileIndentPx}px` }}
+                                  onClick={() => setActiveFileId(file.id)}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    {renderFileIcon(file.name)}
+                                    <span className="truncate">{file.name}</span>
+                                  </div>
 
-                                <div className="flex items-center gap-1.5">
-                                  {file.credentialId && !file.isModified && (
-                                    <span
-                                      className={`w-1.5 h-1.5 rounded-full ${
-                                        isSelected ? "bg-primary-foreground" : "bg-sky-500"
+                                  <div className="flex items-center gap-1.5">
+                                    {file.credentialId && !file.isModified && (
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full ${
+                                          isSelected ? "bg-primary-foreground" : "bg-sky-500"
+                                        }`}
+                                        title="Saved in Vault"
+                                      />
+                                    )}
+                                    {file.isModified && (
+                                      <span
+                                        className={`w-2 h-2 rounded-full ${
+                                          isSelected ? "bg-emerald-300" : "bg-emerald-500"
+                                        }`}
+                                        title="Unsaved changes"
+                                      />
+                                    )}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className={`h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity ${
+                                        isSelected
+                                          ? "text-primary-foreground/90 hover:text-primary-foreground"
+                                          : "text-muted-foreground hover:text-destructive"
                                       }`}
-                                      title="Saved in Vault"
-                                    />
-                                  )}
-                                  {file.isModified && (
-                                    <span
-                                      className={`w-2 h-2 rounded-full ${
-                                        isSelected ? "bg-emerald-300" : "bg-emerald-500"
-                                      }`}
-                                      title="Unsaved changes"
-                                    />
-                                  )}
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity ${
-                                      isSelected
-                                        ? "text-primary-foreground/90 hover:text-primary-foreground"
-                                        : "text-muted-foreground hover:text-destructive"
-                                    }`}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      triggerDelete("file", file.id, file.path);
-                                    }}
-                                    title={`Delete ${file.name}`}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        triggerDelete("file", file.id, file.path);
+                                      }}
+                                      title={`Delete ${file.name}`}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })
+                          )}
                         </div>
                       )}
                     </div>
@@ -1043,22 +1053,38 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
                             AES-256 Encrypted Vault Secret
                           </span>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-1.5"
-                          onClick={() => updateActiveFileContent(" ")}
-                        >
-                          <Edit3 className="h-3 w-3" />
-                          Replace Content
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs border-slate-700 bg-slate-800 text-emerald-400 hover:bg-slate-700 hover:text-emerald-300 flex items-center gap-1.5"
+                            onClick={() =>
+                              setFiles((prev) =>
+                                prev.map((f) => (f.id === activeFileId ? { ...f, isModified: true } : f))
+                              )
+                            }
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            Edit Content
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white flex items-center gap-1.5"
+                            onClick={() => updateActiveFileContent(" ")}
+                          >
+                            Replace Content
+                          </Button>
+                        </div>
                       </div>
                       <PasswordReveal
                         key={`${activeFileNode.credentialId}-${activeFileNode.id}`}
                         encryptedSecret={activeFileNode.encrypted_secret}
                         credentialId={activeFileNode.credentialId}
                         onDecrypt={decryptSecret}
+                        onSecretDecrypted={(decryptedText) => updateActiveFileContent(decryptedText)}
                         isMultiline={true}
                       />
                     </div>
