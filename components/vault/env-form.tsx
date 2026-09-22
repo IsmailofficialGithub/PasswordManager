@@ -100,23 +100,18 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
   useEffect(() => {
     if (projectCredentials.length > 0) {
       const parsedFiles: FileNode[] = projectCredentials.map((cred) => {
-        let rawUsername = cred.username || "/";
+        let rawUsername = cred.username || "/.env.production";
         let path = rawUsername;
-        const env = (cred.environment || null) as Environment | null;
 
-        // Convert legacy folder-only usernames into path with env filename
-        const isFolderOnly = !rawUsername.includes(".") || rawUsername.endsWith("/");
-        if (isFolderOnly && env) {
-          const envSuffix = env === "prod" ? "production" : env;
-          const baseFolder = rawUsername.endsWith("/") && rawUsername !== "/" ? rawUsername.slice(0, -1) : rawUsername;
-          path = baseFolder === "/" ? `/.env.${envSuffix}` : `${baseFolder}/.env.${envSuffix}`;
-        } else if (!path.startsWith("/")) {
+        // Ensure path starts with slash
+        if (!path.startsWith("/")) {
           path = `/${path}`;
         }
 
+        const env = (cred.environment || null) as Environment | null;
         const lastSlashIndex = path.lastIndexOf("/");
         const folderPath = lastSlashIndex <= 0 ? "/" : path.substring(0, lastSlashIndex);
-        const name = path.substring(lastSlashIndex + 1);
+        const name = path.substring(lastSlashIndex + 1) || ".env.production";
 
         return {
           id: cred.id,
@@ -136,10 +131,15 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
         setActiveFileId(parsedFiles[0].id);
       }
 
-      // Expand all parent folders
+      // Expand all parent folders up to root for each file
       const initialExpanded: Record<string, boolean> = { "/": true };
       parsedFiles.forEach((file) => {
-        initialExpanded[file.folderPath] = true;
+        const parts = file.path.split("/").filter(Boolean);
+        let current = "";
+        for (let i = 0; i < parts.length - 1; i++) {
+          current += `/${parts[i]}`;
+          initialExpanded[current] = true;
+        }
       });
       setExpandedFolders(initialExpanded);
     } else {
@@ -805,41 +805,38 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
             <CardContent className="p-0 flex-1 flex flex-col">
               {activeFileNode ? (
                 <div className="flex-1 flex flex-col">
-                  {/* Saved Content Decryption Lock */}
+                  {/* Saved Content Decryption Lock or Code Textarea */}
                   {activeFileNode.credentialId &&
-                    activeFileNode.encrypted_secret &&
-                    !activeFileNode.isModified && (
-                      <div className="m-4 border border-slate-800 rounded-xl p-5 bg-slate-900/50 space-y-4 text-slate-100">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="h-4 w-4 text-sky-400" />
-                            <span className="text-xs font-semibold text-slate-300">
-                              AES-256 Encrypted Vault Secret
-                            </span>
-                          </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-1.5"
-                            onClick={() => updateActiveFileContent(" ")}
-                          >
-                            <Edit3 className="h-3 w-3" />
-                            Replace Content
-                          </Button>
+                  activeFileNode.encrypted_secret &&
+                  !activeFileNode.isModified ? (
+                    <div className="m-4 border border-slate-800 rounded-xl p-5 bg-slate-900/50 space-y-4 text-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-4 w-4 text-sky-400" />
+                          <span className="text-xs font-semibold text-slate-300">
+                            AES-256 Encrypted Vault Secret
+                          </span>
                         </div>
-                        <PasswordReveal
-                          key={`${activeFileNode.credentialId}-${activeFileNode.id}`}
-                          encryptedSecret={activeFileNode.encrypted_secret}
-                          credentialId={activeFileNode.credentialId}
-                          onDecrypt={decryptSecret}
-                          isMultiline={true}
-                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white flex items-center gap-1.5"
+                          onClick={() => updateActiveFileContent(" ")}
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          Replace Content
+                        </Button>
                       </div>
-                    )}
-
-                  {/* Code Textarea with Line Numbers */}
-                  {(!activeFileNode.credentialId || activeFileNode.isModified) && (
+                      <PasswordReveal
+                        key={`${activeFileNode.credentialId}-${activeFileNode.id}`}
+                        encryptedSecret={activeFileNode.encrypted_secret}
+                        credentialId={activeFileNode.credentialId}
+                        onDecrypt={decryptSecret}
+                        isMultiline={true}
+                      />
+                    </div>
+                  ) : (
                     <div className="flex-1 flex relative font-mono text-xs bg-slate-950">
                       {/* Line Numbers Column */}
                       <div className="py-3 px-2 text-right select-none text-slate-600 bg-slate-900/50 border-r border-slate-900 min-w-[3rem] font-mono leading-relaxed">
@@ -953,7 +950,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
               <div className="space-y-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Quick Presets</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {[" .env.production", ".env.staging", ".env.local", "app.js", "server.ts"].map((preset) => (
+                  {[".env.production", ".env.staging", ".env.local", "app.js", "server.ts"].map((preset) => (
                     <button
                       key={preset}
                       type="button"
