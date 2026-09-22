@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useMemo } from "react";
+import { useState, useTransition, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +53,9 @@ export interface FileNode {
   environment?: Environment | null;
 }
 
-export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
+const EMPTY_PROJECT_CREDENTIALS: CredentialWithTags[] = [];
+
+export function EnvForm({ projectCredentials = EMPTY_PROJECT_CREDENTIALS }: EnvFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -107,9 +109,15 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
     label: string;
   }>({ open: false, type: "file", targetIdOrPath: "", label: "" });
 
+  const isInitializedRef = useRef(false);
+
   // Initialize file nodes from project credentials or default state
   useEffect(() => {
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     if (projectCredentials.length > 0) {
+      const initialFolders: string[] = [];
       const parsedFiles: FileNode[] = projectCredentials.map((cred) => {
         let rawUsername = cred.username || "/.env.production";
         let path = rawUsername;
@@ -123,6 +131,10 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
         const lastSlashIndex = path.lastIndexOf("/");
         const folderPath = lastSlashIndex <= 0 ? "/" : path.substring(0, lastSlashIndex);
         const name = path.substring(lastSlashIndex + 1) || ".env.production";
+
+        if (folderPath !== "/") {
+          initialFolders.push(folderPath);
+        }
 
         return {
           id: cred.id,
@@ -138,6 +150,7 @@ export function EnvForm({ projectCredentials = [] }: EnvFormProps) {
       });
 
       setFiles(parsedFiles);
+      setCustomFolders(Array.from(new Set(initialFolders)));
       if (parsedFiles.length > 0 && !activeFileId) {
         setActiveFileId(parsedFiles[0].id);
       }
